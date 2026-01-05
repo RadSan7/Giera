@@ -18,20 +18,14 @@ macos_shader = Shader(language=Shader.GLSL, vertex='''
 #version 150
 uniform mat4 p3d_ModelViewProjectionMatrix;
 in vec4 p3d_Vertex;
-in vec2 p3d_MultiTexCoord0;
-out vec2 texcoord;
 void main() {
     gl_Position = p3d_ModelViewProjectionMatrix * p3d_Vertex;
-    texcoord = p3d_MultiTexCoord0;
 }
 ''', fragment='''
 #version 150
-uniform vec4 p3d_ColorScale;
-in vec2 texcoord;
-out vec4 p3d_FragColor;
+out vec4 fragColor;
 void main() {
-    // DEBUG: Wymuszamy jaskrawy czerwony kolor, żeby sprawdzić czy cokolwiek widać
-    p3d_FragColor = vec4(1.0, 0.0, 0.0, 1.0);
+    fragColor = vec4(1.0, 0.0, 1.0, 1.0); # Magenta
 }
 ''')
 
