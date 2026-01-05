@@ -44,6 +44,8 @@ Entity.default_shader = None
 window.title = 'Antigravity 3D Game'
 window.borderless = False
 window.exit_button.visible = False
+window.fps_counter.enabled = False  # Wyłączamy licznik FPS (te cyferki)
+window.cog_button.enabled = False   # Wyłączamy przycisk ustawień
 
 # --- ŚWIAT GRY ---
 
