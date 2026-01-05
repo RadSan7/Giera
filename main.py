@@ -316,28 +316,37 @@ def main():
         
         draw_scene()
         
-        # Celownik (2D Overlay)
+        # Celownik (2D Overlay) - Poprawiona wersja
+        # 1. Przełącz na projekcję ortogonalną (2D)
         glMatrixMode(GL_PROJECTION)
         glPushMatrix()
         glLoadIdentity()
         glOrtho(0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, -1, 1)
-        glMatrixMode(GL_MODELVIEW)
-        glLoadIdentity()
-        glDisable(GL_DEPTH_TEST)
         
+        # 2. Reset ModelView dla rysowania 2D
+        glMatrixMode(GL_MODELVIEW)
+        glPushMatrix()
+        glLoadIdentity()
+        
+        # 3. Rysowanie
+        glDisable(GL_DEPTH_TEST)
         glColor3f(1, 1, 1)
         cx, cy = SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2
+        
         glBegin(GL_LINES)
-        glVertex2f(cx - 10, cy); glVertex2f(cx + 10, cy)
-        glVertex2f(cx, cy - 10); glVertex2f(cx, cy + 10)
+        glVertex2f(cx - 10, cy); glVertex2f(cx + 10, cy) # Pozioma
+        glVertex2f(cx, cy - 10); glVertex2f(cx, cy + 10) # Pionowa
         glEnd()
         
         glEnable(GL_DEPTH_TEST)
-        glPopMatrix()
+
+        # 4. Sprzątanie (Odwrotna kolejność)
+        glPopMatrix() # Zdejmij ModelView
+        
         glMatrixMode(GL_PROJECTION)
-        # Usunąłem nadmiarowe glPopMatrix tutaj
-        glPopMatrix() 
-        glMatrixMode(GL_MODELVIEW)
+        glPopMatrix() # Zdejmij Projection
+        
+        glMatrixMode(GL_MODELVIEW) # Wróć do normalnego trybu
         
         pygame.display.flip()
 
