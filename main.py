@@ -4,7 +4,7 @@ from OpenGL.GL import *
 from OpenGL.GLU import *
 import math
 import random
-import numpy as np
+import os
 
 # === KONFIGURACJA ===
 WIDTH, HEIGHT = 1280, 720
@@ -13,8 +13,8 @@ SPEED = 0.15
 MOUSE_SENS = 0.15
 
 # === KOLORY ===
-C_SKY = (0.2, 0.2, 0.25) # Dużo jaśniejsze niebo (szaro-niebieskie)
-C_AMBIENT = (0.5, 0.5, 0.5) # Dużo jaśniejszy ambient (żeby coś widzieć)
+C_SKY = (0.1, 0.1, 0.12)
+C_AMBIENT = (0.5, 0.5, 0.5)
 
 # === STAN GRY ===
 STATE_MENU = 0
@@ -24,273 +24,300 @@ game_state = STATE_MENU
 pos = [0.0, 5.0, 0.0]
 rot = [0.0, 0.0]
 vel_y = 0.0
-on_ground = False
 fullscreen = False
 
-# === ŚWIAT ===
-objects = [] # (type, x, y, z, scale)
+objects = [] 
 texture_ids = {}
+display_lists = {}
 
+# === OBJ LOADER ===
+def load_obj(filename, tex_key):
+    vertices = []
+    texcoords = []
+    normals = []
+    faces = []
+    
+    try:
+        for line in open(filename, "r"):
+            if line.startswith('#'): continue
+            values = line.split()
+            if not values: continue
+            
+            if values[0] == 'v':
+                vertices.append(list(map(float, values[1:4])))
+            elif values[0] == 'vt':
+                texcoords.append(list(map(float, values[1:3])))
+            elif values[0] == 'vn':
+                normals.append(list(map(float, values[1:4])))
+            elif values[0] == 'f':
+                face_i = []
+                for v in values[1:]:
+                    w = v.split('/')
+                    face_i.append((int(w[0])-1, int(w[1])-1 if len(w)>1 and w[1] else -1, int(w[2])-1 if len(w)>2 else -1))
+                faces.append(face_i)
+        
+        # Compile to List
+        list_id = glGenLists(1)
+        glNewList(list_id, GL_COMPILE)
+        if tex_key and tex_key in texture_ids:
+            glEnable(GL_TEXTURE_2D)
+            glBindTexture(GL_TEXTURE_2D, texture_ids[tex_key])
+        
+        glBegin(GL_TRIANGLES)
+        for face in faces:
+            # Triangulacja polygonów
+            for i in range(1, len(face)-1):
+                p_indices = [face[0], face[i], face[i+1]]
+                for idx in p_indices:
+                    v_idx, vt_idx, vn_idx = idx
+                    if vn_idx >= 0: glNormal3fv(normals[vn_idx])
+                    if vt_idx >= 0: glTexCoord2fv(texcoords[vt_idx])
+                    glVertex3fv(vertices[v_idx])
+        glEnd()
+        glDisable(GL_TEXTURE_2D)
+        glEndList()
+        return list_id
+    except Exception as e:
+        print(f"Failed to load OBJ {filename}: {e}")
+        return None
+
+# === ASSETS ===
 def load_texture(name, filename):
     try:
+        if not os.path.exists(filename):
+            print(f"texture not found: {filename}")
+            return
         surf = pygame.image.load(filename).convert_alpha()
         data = pygame.image.tostring(surf, "RGBA", 1)
         w, h = surf.get_size()
-        
         tid = glGenTextures(1)
         glBindTexture(GL_TEXTURE_2D, tid)
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, data)
-        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
+        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
         glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
-        glGenerateMipmap(GL_TEXTURE_2D)
-        
         texture_ids[name] = tid
-        print(f"Loaded texture {name} from {filename}")
+        print(f"Loaded {name}")
     except Exception as e:
-        print(f"Failed to load texture {filename}: {e}")
-        # Fallback texture (szachownica)
-        surf = pygame.Surface((64, 64))
-        surf.fill((100, 0, 100))
-        data = pygame.image.tostring(surf, "RGBA", 1)
-        tid = glGenTextures(1)
-        glBindTexture(GL_TEXTURE_2D, tid)
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 64, 64, 0, GL_RGBA, GL_UNSIGNED_BYTE, data)
-        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
-        texture_ids[name] = tid
+        print(f"Err loading tex {name}: {e}")
 
-def init_world():
-    # Las (Drzewa)
-    for _ in range(30):
-        radius = random.uniform(15, 40)
-        angle = random.uniform(0, 6.28)
-        objects.append(('tree', math.cos(angle)*radius, 0, math.sin(angle)*radius, random.uniform(0.8, 1.5)))
+# === ENTITIES ===
+
+class Wolf:
+    def __init__(self, x, z):
+        self.x, self.y, self.z = x, 0, z
+        self.rot = random.uniform(0, 360)
+        self.speed = 0.05
+        self.state = 'walk'
+        self.anim_timer = 0
+    
+    def update(self):
+        # AI: idź prosto, czasem skręć
+        if random.random() < 0.02:
+            self.rot += random.uniform(-45, 45)
+            
+        rad = math.radians(self.rot)
+        self.x += math.sin(rad) * self.speed
+        self.z += math.cos(rad) * self.speed
         
-    # Ruiny (Kamienie)
-    for _ in range(10):
-        objects.append(('rock', random.uniform(-10, 10), 0, random.uniform(-10, 10), random.uniform(0.5, 1.2)))
+        # Odbijanie od ścian
+        if abs(self.x) > 45 or abs(self.z) > 45:
+            self.rot += 180
+            
+        self.anim_timer += 0.2
 
-# === AUDIO (Wyłączone - Cisza) ===
-def init_audio():
-    pass # Cisza, bo szum wkurzał
-    # pygame.mixer.init(44100, -16, 2, 2048)
-    # ...
+    def draw(self):
+        glPushMatrix()
+        glTranslatef(self.x, self.y, self.z)
+        glRotatef(self.rot, 0, 1, 0)
+        
+        glBindTexture(GL_TEXTURE_2D, texture_ids.get('fur', 0))
+        glColor3f(0.6, 0.6, 0.6)
+        
+        # TORSO
+        glPushMatrix()
+        glTranslatef(0, 0.8, 0)
+        glScalef(0.6, 0.6, 1.2)
+        quad = gluNewQuadric()
+        gluQuadricTexture(quad, GL_TRUE)
+        gluSphere(quad, 1, 12, 12)
+        glPopMatrix()
+        
+        # HEAD
+        glPushMatrix()
+        glTranslatef(0, 1.4, 1.0)
+        glScalef(0.5, 0.5, 0.6)
+        gluSphere(quad, 1, 12, 12)
+        glPopMatrix()
+        
+        # LEGS (Animated)
+        for i, pos_x in enumerate([-0.3, 0.3]):
+            for k, pos_z in enumerate([-0.6, 0.6]):
+                glPushMatrix()
+                angle = math.sin(self.anim_timer + (i+k)*3) * 20
+                glTranslatef(pos_x, 0.8, pos_z)
+                glRotatef(angle, 1, 0, 0)
+                glTranslatef(0, -0.6, 0)
+                glScalef(0.15, 0.6, 0.15)
+                gluSphere(quad, 1, 8, 8)
+                glPopMatrix()
+        
+        glPopMatrix()
 
-# === RYSOWANIE GEOMETRII ===
+# === SYSTEM ===
 
-def draw_cylinder(radius, height, tex):
-    glBindTexture(GL_TEXTURE_2D, texture_ids[tex])
-    quad = gluNewQuadric()
-    gluQuadricTexture(quad, GL_TRUE)
-    gluCylinder(quad, radius, radius*0.8, height, 12, 1)
+wolves = []
 
-def draw_cone(base, height, tex):
-    glBindTexture(GL_TEXTURE_2D, texture_ids[tex])
-    quad = gluNewQuadric()
-    gluQuadricTexture(quad, GL_TRUE)
-    gluCylinder(quad, base, 0, height, 12, 1)
-
-def draw_tree(x, y, z, s):
-    glPushMatrix()
-    glTranslatef(x, y, z)
-    glScalef(s, s, s)
+def init_game():
+    load_texture('grass', 'grass.png')
+    load_texture('stone', 'stone.png')
+    load_texture('fur', 'fur.png')
     
-    # Pień
-    glPushMatrix()
-    glRotatef(-90, 1, 0, 0) # Cylinder rysuje się wzdłuż Z
-    glColor3f(0.6, 0.5, 0.4)
-    draw_cylinder(0.4, 3, 'bark')
-    glPopMatrix()
+    # Load Tree Assets
+    load_texture('tree_bark', '4m7qrzwizbnk-fir/bark.jpg')
+    load_texture('tree_branch', '4m7qrzwizbnk-fir/branch.png')
     
-    # Korona
-    glPushMatrix()
-    glTranslatef(0, 2, 0)
-    glRotatef(-90, 1, 0, 0)
-    glColor3f(0.8, 0.9, 0.8)
-    draw_cone(2.0, 4, 'grass') # Używamy trawy jako liści (wygląda jak mech)
-    glPopMatrix()
+    # Load Tree Model
+    display_lists['tree'] = load_obj('4m7qrzwizbnk-fir/fir.obj', 'tree_branch') # Używamy branch jako domyślnej textury
     
-    glPopMatrix()
-
-def draw_rock(x, y, z, s):
-    glPushMatrix()
-    glTranslatef(x, y, z)
-    glScalef(s, s*0.7, s) # Spłaszczony
-    
-    glBindTexture(GL_TEXTURE_2D, texture_ids['stone'])
-    glColor3f(0.7, 0.7, 0.7)
-    
-    # Prosta bryła skalna (Icosahedron-like)
-    glBegin(GL_TRIANGLES)
-    coords = [
-        (0,1,0), (1,0,1), (1,0,-1), (-1,0,-1), (-1,0,1), (0,-1,0)
-    ]
-    # Góra
-    v = coords
-    glTexCoord2f(0.5, 1); glVertex3fv(v[0])
-    glTexCoord2f(1, 0); glVertex3fv(v[1])
-    glTexCoord2f(0, 0); glVertex3fv(v[2])
-    
-    glTexCoord2f(0.5, 1); glVertex3fv(v[0])
-    glTexCoord2f(1, 0); glVertex3fv(v[2])
-    glTexCoord2f(0, 0); glVertex3fv(v[3])
-    
-    glTexCoord2f(0.5, 1); glVertex3fv(v[0])
-    glTexCoord2f(1, 0); glVertex3fv(v[3])
-    glTexCoord2f(0, 0); glVertex3fv(v[4])
-    
-    glTexCoord2f(0.5, 1); glVertex3fv(v[0])
-    glTexCoord2f(1, 0); glVertex3fv(v[4])
-    glTexCoord2f(0, 0); glVertex3fv(v[1])
-    glEnd()
-    
-    glPopMatrix()
+    # Spawn Wolves
+    for _ in range(5):
+        wolves.append(Wolf(random.uniform(-20, 20), random.uniform(-20, 20)))
+        
+    # Spawn Trees (Positions)
+    for _ in range(40):
+        objects.append(('tree', random.uniform(-40, 40), 0, random.uniform(-40, 40), random.uniform(1.0, 1.5)))
 
 def draw_scene():
-    # Podłoga (Trawa)
+    # Floor
     glEnable(GL_TEXTURE_2D)
-    glBindTexture(GL_TEXTURE_2D, texture_ids['grass'])
-    glColor3f(0.6, 0.6, 0.6) # Przyciemniona
+    glBindTexture(GL_TEXTURE_2D, texture_ids.get('grass', 0))
     glBegin(GL_QUADS)
-    glNormal3f(0, 1, 0)
-    glTexCoord2f(0, 0); glVertex3f(-100, 0, -100)
-    glTexCoord2f(20, 0); glVertex3f(100, 0, -100)
-    glTexCoord2f(20, 20); glVertex3f(100, 0, 100)
-    glTexCoord2f(0, 20); glVertex3f(-100, 0, 100)
+    glNormal3f(0,1,0); glTexCoord2f(0,0); glVertex3f(-100,0,-100)
+    glTexCoord2f(20,0); glVertex3f(100,0,-100)
+    glTexCoord2f(20,20); glVertex3f(100,0,100)
+    glTexCoord2f(0,20); glVertex3f(-100,0,100)
     glEnd()
     
-    for obj in objects:
-        t, x, y, z, s = obj
-        if t == 'tree': draw_tree(x, y, z, s)
-        elif t == 'rock': draw_rock(x, y, z, s)
+    # Trees
+    if 'tree' in display_lists:
+        for obj in objects:
+            if obj[0] == 'tree':
+                glPushMatrix()
+                glTranslatef(obj[1], obj[2], obj[3])
+                glScalef(obj[4], obj[4], obj[4])
+                glCallList(display_lists['tree'])
+                glPopMatrix()
+                
+    # Wolves
+    for w in wolves:
+        w.draw()
 
-# === MENU ===
-def draw_text(text, x, y, size=40):
-    font = pygame.font.SysFont('Arial', size, bold=True)
-    surf = font.render(text, True, (255, 255, 255))
-    text_data = pygame.image.tostring(surf, "RGBA", 1)
-    w, h = surf.get_size()
-    
-    glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-    glWindowPos2i(x, HEIGHT - y)
-    glDrawPixels(w, h, GL_RGBA, GL_UNSIGNED_BYTE, text_data)
-    glDisable(GL_BLEND)
+def set_projection(w, h):
+    glViewport(0, 0, w, h)
+    glMatrixMode(GL_PROJECTION)
+    glLoadIdentity()
+    gluPerspective(FOV, w/h, 0.5, 200.0)
+    glMatrixMode(GL_MODELVIEW)
 
-def draw_menu():
-    glClearColor(0.1, 0.1, 0.1, 1) # Lekko szare tło zamiast czarnego
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
-    
-    glMatrixMode(GL_PROJECTION); glPushMatrix(); glLoadIdentity()
-    glOrtho(0, WIDTH, 0, HEIGHT, -1, 1)
-    glMatrixMode(GL_MODELVIEW); glPushMatrix(); glLoadIdentity()
-    
-    glDisable(GL_LIGHTING) # Ważne: tekst rysujemy bez oświetlenia!
-    glDisable(GL_DEPTH_TEST)
-    
-    draw_text("ANTIGRAVITY: DARK SOULS", WIDTH//2 - 200, HEIGHT//2 + 50, 50)
-    draw_text("Press ENTER", WIDTH//2 - 80, HEIGHT//2 - 50, 30)
-    
-    glEnable(GL_DEPTH_TEST)
-    glEnable(GL_LIGHTING)
-    
-    glPopMatrix(); glMatrixMode(GL_PROJECTION); glPopMatrix(); glMatrixMode(GL_MODELVIEW)
-    pygame.display.flip()
-
-# === MAIN ===
 def main():
     global game_state, pos, rot, vel_y, fullscreen, WIDTH, HEIGHT
     pygame.init()
+    
+    # Domyślny tryb okienkowy na starcie
     screen = pygame.display.set_mode((WIDTH, HEIGHT), DOUBLEBUF | OPENGL | RESIZABLE)
-    pygame.display.set_caption("Antigravity HD")
-    init_audio()
+    pygame.display.set_caption("Antigravity: Wolves Update")
     
-    # Setup GL
     glEnable(GL_DEPTH_TEST)
-    glEnable(GL_LIGHTING)
-    glEnable(GL_LIGHT0); glEnable(GL_LIGHT1)
+    glEnable(GL_LIGHTING); glEnable(GL_LIGHT0)
+    glLightfv(GL_LIGHT0, GL_POSITION, (10, 50, 10, 0))
+    glLightfv(GL_LIGHT0, GL_AMBIENT, (*C_AMBIENT, 1))
+    
     glEnable(GL_COLOR_MATERIAL)
-    glEnable(GL_FOG)
-    glFogfv(GL_FOG_COLOR, C_SKY + (1.0,))
-    glFogi(GL_FOG_MODE, GL_LINEAR)
-    glFogf(GL_FOG_START, 20.0); glFogf(GL_FOG_END, 80.0)
     
-    # Init Assets
-    load_texture('grass', 'grass.png')
-    load_texture('bark', 'bark.png')
-    load_texture('stone', 'stone.png')
-    init_world()
-    
+    init_game()
     clock = pygame.time.Clock()
     
     while True:
-        dt = clock.tick(60)
+        clock.tick(60)
         
         for e in pygame.event.get():
             if e.type == QUIT: return
             if e.type == KEYDOWN:
                 if e.key == K_ESCAPE:
-                    if game_state == STATE_GAME: game_state = STATE_MENU; pygame.mouse.set_visible(True)
-                    else: return
+                    game_state = STATE_MENU if game_state == STATE_GAME else STATE_MENU # Toggle logic can be improved
+                    if game_state == STATE_MENU: pygame.mouse.set_visible(True)
                 if e.key == K_RETURN and game_state == STATE_MENU:
                     game_state = STATE_GAME; pygame.mouse.set_visible(False)
-                if e.key == K_f: # Toggle Fullscreen
+                if e.key == K_f:
                     fullscreen = not fullscreen
-                    if fullscreen: screen = pygame.display.set_mode((0, 0), DOUBLEBUF | OPENGL | FULLSCREEN)
-                    else: screen = pygame.display.set_mode((1280, 720), DOUBLEBUF | OPENGL | RESIZABLE)
-                    w, h = screen.get_size()
+                    if fullscreen:
+                        # Pobieramy natywną rozdzielczość monitora
+                        info = pygame.display.Info()
+                        w, h = info.current_w, info.current_h
+                        screen = pygame.display.set_mode((w, h), DOUBLEBUF | OPENGL | FULLSCREEN)
+                    else:
+                        w, h = 1280, 720
+                        screen = pygame.display.set_mode((w, h), DOUBLEBUF | OPENGL | RESIZABLE)
                     WIDTH, HEIGHT = w, h
-                    glViewport(0, 0, w, h)
+                    set_projection(WIDTH, HEIGHT) # FORCE UPDATE PROJECTION
+                    
             if e.type == VIDEORESIZE and not fullscreen:
                 WIDTH, HEIGHT = e.w, e.h
-                glViewport(0, 0, WIDTH, HEIGHT)
-                
-        if game_state == STATE_MENU:
-            draw_menu()
-            continue
+                screen = pygame.display.set_mode((WIDTH, HEIGHT), DOUBLEBUF | OPENGL | RESIZABLE)
+                set_projection(WIDTH, HEIGHT)
+
+        # Logic
+        if game_state == STATE_GAME:
+            if pygame.mouse.get_focused():
+                cx, cy = WIDTH//2, HEIGHT//2
+                mx, my = pygame.mouse.get_pos()
+                dx, dy = mx-cx, my-cy
+                if dx or dy:
+                    pygame.mouse.set_pos(cx, cy)
+                    rot[0] += dx * MOUSE_SENS
+                    rot[1] = max(-89, min(89, rot[1] + dy * MOUSE_SENS))
             
-        # GAME LOOP
-        if pygame.mouse.get_focused():
-            mid_x, mid_y = WIDTH//2, HEIGHT//2
-            mx, my = pygame.mouse.get_pos()
-            dx, dy = mx-mid_x, my-mid_y
-            if dx or dy:
-                pygame.mouse.set_pos(mid_x, mid_y)
-                rot[0] += dx * MOUSE_SENS
-                rot[1] = max(-89, min(89, rot[1] + dy * MOUSE_SENS))
-        
-        # Fizyka i Ruch
-        keys = pygame.key.get_pressed()
-        yaw = math.radians(rot[0])
-        fx, fz = math.sin(yaw), -math.cos(yaw)
-        rx, rz = math.cos(yaw), math.sin(yaw)
-        
-        if keys[K_w]: pos[0] += fx*SPEED; pos[2] += fz*SPEED
-        if keys[K_s]: pos[0] -= fx*SPEED; pos[2] -= fz*SPEED
-        if keys[K_a]: pos[0] -= rx*SPEED; pos[2] -= rz*SPEED
-        if keys[K_d]: pos[0] += rx*SPEED; pos[2] += rz*SPEED
-        
-        if keys[K_SPACE] and pos[1] <= 2.2: vel_y = 0.2
-        if keys[K_g]: vel_y += 0.01; vel_y *= 0.95
-        else: vel_y -= 0.01
-        pos[1] += vel_y
-        if pos[1] < 2.0: pos[1] = 2.0; vel_y = 0
-        
+            # Move
+            keys = pygame.key.get_pressed()
+            rad = math.radians(rot[0])
+            s, c = math.sin(rad), math.cos(rad)
+            if keys[K_w]: pos[0]+=s*SPEED; pos[2]-=c*SPEED
+            if keys[K_s]: pos[0]-=s*SPEED; pos[2]+=c*SPEED
+            if keys[K_a]: pos[0]-=c*SPEED; pos[2]-=s*SPEED
+            if keys[K_d]: pos[0]+=c*SPEED; pos[2]+=s*SPEED
+            
+            # Physics
+            if keys[K_SPACE] and pos[1] <= 2.2: vel_y = 0.2
+            if keys[K_g]: vel_y += 0.01
+            else: vel_y -= 0.01
+            pos[1] += vel_y
+            if pos[1] < 2.0: pos[1] = 2.0; vel_y = 0
+            
+            # Wolves Update
+            for w in wolves: w.update()
+
         # Render
-        glClearColor(*C_SKY, 1.0)
+        glClearColor(*C_SKY, 1)
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
-        glMatrixMode(GL_PROJECTION); glLoadIdentity(); gluPerspective(FOV, WIDTH/HEIGHT, 0.5, 200.0)
-        glMatrixMode(GL_MODELVIEW); glLoadIdentity()
+        glLoadIdentity()
         
-        pch = math.radians(rot[1])
-        gluLookAt(pos[0], pos[1], pos[2], 
-                  pos[0] + fx*math.cos(pch), pos[1] - math.sin(pch), pos[2] + fz*math.cos(pch), 
-                  0, 1, 0)
-        
-        # Światło
-        glLightfv(GL_LIGHT0, GL_POSITION, (20, 100, 20, 0)) # Księżyc
-        glLightfv(GL_LIGHT0, GL_AMBIENT, C_AMBIENT + (1,))
-        glLightfv(GL_LIGHT1, GL_POSITION, (*pos, 1)) # Pochodnia
-        
-        draw_scene()
+        if game_state == STATE_MENU:
+            glMatrixMode(GL_PROJECTION); glPushMatrix(); glLoadIdentity()
+            glOrtho(0, WIDTH, 0, HEIGHT, -1, 1)
+            glMatrixMode(GL_MODELVIEW); glPushMatrix(); glLoadIdentity()
+            glDisable(GL_LIGHTING)
+            # Simple text (draw white quad as indicator if text fails)
+            glColor3f(1, 1, 1)
+            glRectf(WIDTH//2-50, HEIGHT//2-10, WIDTH//2+50, HEIGHT//2+10)
+            glEnable(GL_LIGHTING)
+            glPopMatrix(); glMatrixMode(GL_PROJECTION); glPopMatrix(); glMatrixMode(GL_MODELVIEW)
+        else:
+            pch = math.radians(rot[1])
+            gluLookAt(pos[0], pos[1], pos[2], 
+                      pos[0]+math.sin(rad)*math.cos(pch), pos[1]-math.sin(pch), pos[2]-math.cos(rad)*math.cos(pch),
+                      0, 1, 0)
+            draw_scene()
+            
         pygame.display.flip()
 
 if __name__ == "__main__":
