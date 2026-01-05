@@ -335,7 +335,9 @@ def main():
         glEnable(GL_DEPTH_TEST)
         glPopMatrix()
         glMatrixMode(GL_PROJECTION)
-        glPopMatrix()
+        # Usunąłem nadmiarowe glPopMatrix tutaj
+        glPopMatrix() 
+        glMatrixMode(GL_MODELVIEW)
         
         pygame.display.flip()
 
