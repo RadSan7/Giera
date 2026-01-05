@@ -1,2 +1,3 @@
-# Tutaj wpisujemy biblioteki, np.:
-ursina
+pygame
+PyOpenGL
+PyOpenGL_accelerate
