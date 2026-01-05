@@ -62,8 +62,14 @@ def load_obj(filename, tex_key):
         if tex_key and tex_key in texture_ids:
             glEnable(GL_TEXTURE_2D)
             glBindTexture(GL_TEXTURE_2D, texture_ids[tex_key])
+            
+            # TRANSPARENCY FIX (Alpha Cutoff)
+            glEnable(GL_ALPHA_TEST)
+            glAlphaFunc(GL_GREATER, 0.5) 
+            # (rysowanie tylko pixeli z alpha > 0.5)
         
         glBegin(GL_TRIANGLES)
+        glColor3f(1.0, 1.0, 1.0) # Reset koloru na biały przed rysowaniem textury
         for face in faces:
             # Triangulacja polygonów
             for i in range(1, len(face)-1):
@@ -131,14 +137,14 @@ class Wolf:
         glRotatef(self.rot, 0, 1, 0)
         
         glBindTexture(GL_TEXTURE_2D, texture_ids.get('fur', 0))
-        glColor3f(0.6, 0.6, 0.6)
+        glColor3f(1.0, 1.0, 1.0) # Biały MODULATE, żeby było widać kolor tekstury
         
         # TORSO
         glPushMatrix()
         glTranslatef(0, 0.8, 0)
         glScalef(0.6, 0.6, 1.2)
         quad = gluNewQuadric()
-        gluQuadricTexture(quad, GL_TRUE)
+        gluQuadricTexture(quad, GL_TRUE) # Generuj UV
         gluSphere(quad, 1, 12, 12)
         glPopMatrix()
         
@@ -146,6 +152,8 @@ class Wolf:
         glPushMatrix()
         glTranslatef(0, 1.4, 1.0)
         glScalef(0.5, 0.5, 0.6)
+        quad = gluNewQuadric() # Nowy quadric dla głowy
+        gluQuadricTexture(quad, GL_TRUE)
         gluSphere(quad, 1, 12, 12)
         glPopMatrix()
         
@@ -158,6 +166,8 @@ class Wolf:
                 glRotatef(angle, 1, 0, 0)
                 glTranslatef(0, -0.6, 0)
                 glScalef(0.15, 0.6, 0.15)
+                quad = gluNewQuadric()
+                gluQuadricTexture(quad, GL_TRUE)
                 gluSphere(quad, 1, 8, 8)
                 glPopMatrix()
         
@@ -213,11 +223,14 @@ def draw_scene():
         w.draw()
 
 def set_projection(w, h):
+    if h == 0: h = 1 # Zapobiegamy dzieleniu przez zero
     glViewport(0, 0, w, h)
     glMatrixMode(GL_PROJECTION)
     glLoadIdentity()
-    gluPerspective(FOV, w/h, 0.5, 200.0)
+    aspect_ratio = w / h
+    gluPerspective(FOV, aspect_ratio, 0.5, 200.0)
     glMatrixMode(GL_MODELVIEW)
+    glLoadIdentity()
 
 def main():
     global game_state, pos, rot, vel_y, fullscreen, WIDTH, HEIGHT
