@@ -383,6 +383,7 @@ def main():
         
         glMatrixMode(GL_MODELVIEW)
         glLoadIdentity()
+                      gluLookAt(camera_pos[0], camera_pos[1], camera_pos[2],
                   camera_pos[0] + dir_x, camera_pos[1] + dir_y, camera_pos[2] + dir_z,
                   0, 1, 0)
                   
