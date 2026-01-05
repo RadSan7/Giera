@@ -13,8 +13,8 @@ SPEED = 0.15
 MOUSE_SENS = 0.15
 
 # === KOLORY ===
-C_SKY = (0.05, 0.05, 0.08)
-C_AMBIENT = (0.2, 0.2, 0.25)
+C_SKY = (0.2, 0.2, 0.25) # Dużo jaśniejsze niebo (szaro-niebieskie)
+C_AMBIENT = (0.5, 0.5, 0.5) # Dużo jaśniejszy ambient (żeby coś widzieć)
 
 # === STAN GRY ===
 STATE_MENU = 0
@@ -69,22 +69,11 @@ def init_world():
     for _ in range(10):
         objects.append(('rock', random.uniform(-10, 10), 0, random.uniform(-10, 10), random.uniform(0.5, 1.2)))
 
-# === AUDIO (Dark Ambient) ===
+# === AUDIO (Wyłączone - Cisza) ===
 def init_audio():
-    pygame.mixer.init(44100, -16, 2, 2048)
-    # Generujemy mroczny pad
-    duration = 3.0
-    sr = 44100
-    t = np.linspace(0, duration, int(sr*duration), False)
-    # Niskie tony (Cello-like)
-    wave = np.sin(2*np.pi*65*t) * 0.3 + np.sin(2*np.pi*130*t) * 0.2
-    # Szum
-    noise = np.random.uniform(-0.1, 0.1, len(t))
-    audio = ((wave + noise) * 4000).astype(np.int16)
-    audio = np.column_stack((audio, audio))
-    
-    sound = pygame.sndarray.make_sound(audio)
-    sound.play(loops=-1, fade_ms=2000)
+    pass # Cisza, bo szum wkurzał
+    # pygame.mixer.init(44100, -16, 2, 2048)
+    # ...
 
 # === RYSOWANIE GEOMETRII ===
 
@@ -187,11 +176,23 @@ def draw_text(text, x, y, size=40):
     glDisable(GL_BLEND)
 
 def draw_menu():
-    glClearColor(0, 0, 0, 1)
-    glClear(GL_COLOR_BUFFER_BIT)
-    draw_text("ANTIGRAVITY: DARK SOULS EDITION", WIDTH//2 - 200, 200, 50)
-    draw_text("Press ENTER to Start", WIDTH//2 - 100, 400, 30)
-    draw_text("Press ESC to Exit", WIDTH//2 - 80, 450, 30)
+    glClearColor(0.1, 0.1, 0.1, 1) # Lekko szare tło zamiast czarnego
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+    
+    glMatrixMode(GL_PROJECTION); glPushMatrix(); glLoadIdentity()
+    glOrtho(0, WIDTH, 0, HEIGHT, -1, 1)
+    glMatrixMode(GL_MODELVIEW); glPushMatrix(); glLoadIdentity()
+    
+    glDisable(GL_LIGHTING) # Ważne: tekst rysujemy bez oświetlenia!
+    glDisable(GL_DEPTH_TEST)
+    
+    draw_text("ANTIGRAVITY: DARK SOULS", WIDTH//2 - 200, HEIGHT//2 + 50, 50)
+    draw_text("Press ENTER", WIDTH//2 - 80, HEIGHT//2 - 50, 30)
+    
+    glEnable(GL_DEPTH_TEST)
+    glEnable(GL_LIGHTING)
+    
+    glPopMatrix(); glMatrixMode(GL_PROJECTION); glPopMatrix(); glMatrixMode(GL_MODELVIEW)
     pygame.display.flip()
 
 # === MAIN ===
