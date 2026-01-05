@@ -59,10 +59,13 @@ def create_level():
         r = random.uniform(1.5, 2.5)
         pillars.append((px, pz, r, h))
 
-    # Magiczne kryształy (do rzucania)
+    # Magiczne kryształy (do rzucania) - daleko od spawnu gracza
     for _ in range(8):
+        # Spawn min 8m od środka mapy
+        x = random.choice([-1, 1]) * random.uniform(8, 15)
+        z = random.choice([-1, 1]) * random.uniform(8, 15)
         crystals.append([
-            random.uniform(-15, 15), random.uniform(5, 8), random.uniform(-15, 15),
+            x, random.uniform(12, 18), z,  # Wyżej - spadną
             0.5, 0.2, 0.8, # Fioletowy bazowy
             0, 0, 0,
             random.uniform(0.4, 0.7) # Rozmiar
