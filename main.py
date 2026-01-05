@@ -20,13 +20,13 @@ COLOR_STONE_LIGHT = (0.6, 0.6, 0.65) # Jaśniejsze kamienie
 COLOR_STONE_DARK = (0.3, 0.3, 0.35)
 COLOR_FLOOR_MAIN = (0.3, 0.3, 0.3)   # Jaśniejsza podłoga
 COLOR_FLOOR_ACCENT = (0.25, 0.1, 0.1) # Krwawe akcenty
-COLOR_SKY = (0.05, 0.0, 0.1) # Bardzo ciemny fiolet
+COLOR_SKY = (0.1, 0.1, 0.12) # Ciemnoszary (bezpieczniejszy niż fiolet)
 COLOR_TORCH = (1.0, 0.6, 0.2) # Ogień
 COLOR_CRYSTAL = (0.2, 0.8, 1.0) # Magiczny błękit
 
 # --- STAN GRY ---
 camera_pos = [0.0, 5.0, 0.0] # Spawn wysoko (5m), żeby spaść na ziemię
-camera_rot = [0.0, 0.0]
+camera_rot = [0.0, -15.0] # Patrzymy lekko w dół, żeby widzieć podłogę
 velocity_y = 0.0
 on_ground = False
 holding_object = None
