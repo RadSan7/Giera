@@ -1,23 +1,44 @@
 from panda3d.core import loadPrcFileData
 
 # --- KONFIGURACJA DLA MACOS ---
-# Próbujemy nowszego OpenGL 4.1 (M1/M2 to obsługują)
-loadPrcFileData('', 'gl-version 4 1')
+# Musimy używać Core Profile (GL 3.2+), aby mieć dostęp do nowszych funkcji,
+# ALE musimy też dostarczyć shadery w wersji 150, bo domyślne 130 są odrzucane.
+loadPrcFileData('', 'gl-version 3 2')
 loadPrcFileData('', 'gl-profile core')
-# Ukrywamy błędy "missing version", bo Core Profile jest czasem nadgorliwy
 loadPrcFileData('', 'gl-ignore-no-source #t')
 
 from ursina import *
-from ursina.shaders import unlit_shader # Importujemy prosty shader
 from ursina.prefabs.first_person_controller import FirstPersonController
 
 # Inicjalizacja silnika
 app = Ursina()
 
-# --- FIX SHADERÓW ---
-# Zamiast 'None' (co powoduje automagiczne generowanie wadliwych shaderów),
-# używamy oficjalnego 'unlit_shader', który jest bardzo prosty.
-Entity.default_shader = unlit_shader
+# --- CUSTOM MACOS SHADER ---
+# Ręcznie napisany shader w wersji 150 (kompatybilny z macOS Core Profile).
+# Zastępuje on domyślne shadery, które powodują błąd "version 130 not supported".
+macos_shader = Shader(language=Shader.GLSL, vertex='''
+#version 150
+uniform mat4 p3d_ModelViewProjectionMatrix;
+in vec4 p3d_Vertex;
+in vec2 p3d_MultiTexCoord0;
+out vec2 texcoord;
+void main() {
+  gl_Position = p3d_ModelViewProjectionMatrix * p3d_Vertex;
+  texcoord = p3d_MultiTexCoord0;
+}
+''', fragment='''
+#version 150
+uniform vec4 p3d_ColorScale;
+in vec2 texcoord;
+out vec4 p3d_FragColor;
+void main() {
+  // Prosty kolor bez tekstur (unlit)
+  p3d_FragColor = p3d_ColorScale;
+}
+''')
+
+# Ustawiamy ten shader jako domyślny dla wszystkich obiektów
+Entity.default_shader = macos_shader
 
 # Ustawienia okna
 window.title = 'Antigravity 3D Game'
