@@ -1,35 +1,32 @@
-from panda3d.core import loadPrcFileData
-# Konfiguracja dla macOS - Wymuszenie OpenGL 3.2+ Core Profile
-loadPrcFileData('', 'gl-version 3 2')
-loadPrcFileData('', 'gl-profile core')
-# Wyłączamy sprawdzanie poprawności shaderów, czasem pomaga na warnings
-loadPrcFileData('', 'gl-ignore-no-source #t')
-
 from ursina import *
 from ursina.prefabs.first_person_controller import FirstPersonController
 
 # Inicjalizacja silnika
 app = Ursina()
 
+# --- FIX DLA MACOS ---
+# Wyłączamy domyślne shadery PBR, które powodują błędy na Macu
+# Wymuszamy najprostsze renderowanie
+Entity.default_shader = None
+
 # Ustawienia okna
 window.title = 'Antigravity 3D Game'
 window.borderless = False
-window.fullscreen = False
 window.exit_button.visible = False
 
 # --- ŚWIAT GRY ---
 
-# Podłoga (Unlit - bez skomplikowanego cieniowania, żeby działało na Mac)
+# Podłoga
 ground = Entity(
     model='plane',
     color=color.green,
     collider='box',
     scale=(100, 1, 100),
     position=(0, 0, 0),
-    shader=None  # Wyłączenie shadera = bezpieczniejszy render
+    shader=None
 )
 
-# Niebo (Proste, jednokolorowe)
+# Niebo
 Entity(
     model='sphere', 
     scale=500, 
