@@ -25,8 +25,8 @@ COLOR_TORCH = (1.0, 0.6, 0.2) # Ogień
 COLOR_CRYSTAL = (0.2, 0.8, 1.0) # Magiczny błękit
 
 # --- STAN GRY ---
-camera_pos = [-15.0, 2.5, 15.0]
-camera_rot = [45.0, 0.0]
+camera_pos = [0.0, 2.0, 0.0] # Bezpieczny środek (z dala od kolumn)
+camera_rot = [0.0, 0.0]
 velocity_y = 0.0
 on_ground = False
 holding_object = None
@@ -116,11 +116,12 @@ def init_graphics():
     glEnable(GL_CULL_FACE)
     glShadeModel(GL_SMOOTH) # Gładkie cieniowanie (Gouraud)
     
-    # Mroczna mgła
+    # Mroczna mgła (poprawiona - mniej agresywna)
     glEnable(GL_FOG)
     glFogfv(GL_FOG_COLOR, COLOR_SKY + (1.0,))
-    glFogi(GL_FOG_MODE, GL_EXP2) # Gęsta eksponencjalna mgła
-    glFogf(GL_FOG_DENSITY, 0.035)
+    glFogi(GL_FOG_MODE, GL_LINEAR) # Liniowa zamiast EXP2 (łatwiej kontrolować)
+    glFogf(GL_FOG_START, 5.0)  # Zaczyna się 5 metrów od gracza
+    glFogf(GL_FOG_END, 35.0)   # Kończy na 35 metrach
     
     # Oświetlenie
     glEnable(GL_LIGHTING)
@@ -377,7 +378,11 @@ def main():
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         glLoadIdentity()
         
-        gluLookAt(camera_pos[0], camera_pos[1], camera_pos[2],
+        # Zwiększyłem near plane do 0.2, żeby nie ucinało za blisko
+        gluPerspective(FOV, (SCREEN_WIDTH/SCREEN_HEIGHT), 0.2, 100.0) 
+        
+        glMatrixMode(GL_MODELVIEW)
+        glLoadIdentity()
                   camera_pos[0] + dir_x, camera_pos[1] + dir_y, camera_pos[2] + dir_z,
                   0, 1, 0)
                   
