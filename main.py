@@ -214,11 +214,21 @@ def main():
 
         # --- UPDATE ---
         
-        # Myszka
-        mx, my = pygame.mouse.get_rel()
-        camera_rot[0] += mx * MOUSE_SENSITIVITY
-        camera_rot[1] += my * MOUSE_SENSITIVITY
-        camera_rot[1] = max(-89, min(89, camera_rot[1]))
+        # Myszka (blokowanie kursora na środku)
+        if pygame.mouse.get_focused():
+            target_x = SCREEN_WIDTH // 2
+            target_y = SCREEN_HEIGHT // 2
+            mx, my = pygame.mouse.get_pos()
+            
+            diff_x = mx - target_x
+            diff_y = my - target_y
+            
+            if diff_x != 0 or diff_y != 0:
+                pygame.mouse.set_pos((target_x, target_y))
+                camera_rot[0] += diff_x * MOUSE_SENSITIVITY
+                camera_rot[1] += diff_y * MOUSE_SENSITIVITY
+                camera_rot[1] = max(-89, min(89, camera_rot[1]))
+
         
         # Klawiatura
         keys = pygame.key.get_pressed()
