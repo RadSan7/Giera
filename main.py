@@ -30,8 +30,8 @@ uniform vec4 p3d_ColorScale;
 in vec2 texcoord;
 out vec4 p3d_FragColor;
 void main() {
-    // Prosty kolor (unlit)
-    p3d_FragColor = p3d_ColorScale;
+    // DEBUG: Wymuszamy jaskrawy czerwony kolor, żeby sprawdzić czy cokolwiek widać
+    p3d_FragColor = vec4(1.0, 0.0, 0.0, 1.0);
 }
 ''')
 
