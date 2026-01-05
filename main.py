@@ -80,18 +80,60 @@ for i in range(8):
 
 # --- GRACZ ---
 player = FirstPersonController()
-player.cursor.visible = True
+player.cursor.visible = False # Ukrywamy kursor systemowy, bo mamy celownik
 player.gravity = 1
+
+# Celownik
+crosshair = Entity(parent=camera.ui, model='quad', color=color.red, scale=.015, rotation_z=45)
+
+# Broń (pudełko udające broń)
+gun = Entity(parent=camera, position=(.5, -.25, .5), scale=(.3, .2, 1), model='cube', color=color.gray, on_cooldown=False, shader=macos_shader)
+
+# Zmienne do trzymania obiektu
+held_entity = None
 
 # --- LOGIKA ---
 def update():
+    global held_entity
+
+    # Wyjście
     if held_keys['escape']:
         application.quit()
         
+    # Mechanika chodzenia/latania (Grawitacja)
     if held_keys['g']:
         player.gravity = 0.1
     else:
         player.gravity = 1
+
+    # --- MECHANIKA BRONI ANTYGRAWITACYJNEJ ---
+    
+    # 1. Trzymanie obiektu
+    if held_entity:
+        # Obiekt podąża za punktem przed kamerą
+        # Lerp (płynne przejście) dla ładniejszego efektu
+        target_position = camera.world_position + camera.forward * 3
+        held_entity.position = lerp(held_entity.position, target_position, time.dt * 10)
+        # Resetujemy rotację, żeby było "magicznie" stabilnie (opcjonalne)
+        held_entity.rotation = lerp(held_entity.rotation, camera.rotation, time.dt * 5)
+
+    # 2. Strzelanie / Podnoszenie (Myszka)
+    if held_keys['left mouse']:
+        if held_entity:
+            # Rzut (puszczamy obiekt + wektor siły by zadziałał, gdybyśmy mieli fizykę RigidBody)
+            # W prostym Ursina domyślnie kolizje są statyczne, ale możemy symulować "rzut"
+            held_entity = None
+        else:
+            # Próba podniesienia
+            hit_info = raycast(camera.world_position, camera.forward, distance=10)
+            if hit_info.hit:
+                if hit_info.entity != ground: # Nie chcemy podnieść podłogi!
+                    held_entity = hit_info.entity
+
+    # Reset trzymania prawym przyciskiem (upuszczenie)
+    if held_keys['right mouse'] and held_entity:
+        held_entity = None
+
 
 if __name__ == '__main__':
     app.run()
