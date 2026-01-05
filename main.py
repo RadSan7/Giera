@@ -16,9 +16,9 @@ JUMP_STRENGTH = 0.25
 MOUSE_SENSITIVITY = 0.15
 
 # --- KOLORY (DARK FANTASY) ---
-COLOR_STONE_LIGHT = (0.4, 0.4, 0.45)
-COLOR_STONE_DARK = (0.2, 0.2, 0.25)
-COLOR_FLOOR_MAIN = (0.15, 0.15, 0.15)
+COLOR_STONE_LIGHT = (0.6, 0.6, 0.65) # Jaśniejsze kamienie
+COLOR_STONE_DARK = (0.3, 0.3, 0.35)
+COLOR_FLOOR_MAIN = (0.3, 0.3, 0.3)   # Jaśniejsza podłoga
 COLOR_FLOOR_ACCENT = (0.25, 0.1, 0.1) # Krwawe akcenty
 COLOR_SKY = (0.05, 0.0, 0.1) # Bardzo ciemny fiolet
 COLOR_TORCH = (1.0, 0.6, 0.2) # Ogień
@@ -123,18 +123,18 @@ def init_graphics():
     glFogf(GL_FOG_START, 10.0)  # Jeszcze dalej (10m)
     glFogf(GL_FOG_END, 40.0)
     
-    # Oświetlenie
+    # Oświetlenie (Jaśniejsze)
     glEnable(GL_LIGHTING)
-    glEnable(GL_LIGHT0) # Światło "Księżyca" (niebieskie, słabe)
+    glEnable(GL_LIGHT0) # Światło "Księżyca"
     glLightfv(GL_LIGHT0, GL_POSITION,  (20, 100, 20, 0.0))
-    glLightfv(GL_LIGHT0, GL_AMBIENT,   (0.1, 0.1, 0.2, 1.0))
-    glLightfv(GL_LIGHT0, GL_DIFFUSE,   (0.3, 0.3, 0.5, 1.0))
+    glLightfv(GL_LIGHT0, GL_AMBIENT,   (0.4, 0.4, 0.5, 1.0)) # Znacznie jaśniejszy ambient
+    glLightfv(GL_LIGHT0, GL_DIFFUSE,   (0.7, 0.7, 0.8, 1.0)) # Jaśniejsze światło główne
     
-    glEnable(GL_LIGHT1) # "Pochodnia gracza" (ciepła, punktowa)
-    glLightfv(GL_LIGHT1, GL_DIFFUSE,   (0.8, 0.6, 0.2, 1.0))
-    glLightf(GL_LIGHT1, GL_CONSTANT_ATTENUATION, 0.5)
-    glLightf(GL_LIGHT1, GL_LINEAR_ATTENUATION, 0.1)
-    glLightf(GL_LIGHT1, GL_QUADRATIC_ATTENUATION, 0.01)
+    glEnable(GL_LIGHT1) # "Pochodnia gracza"
+    glLightfv(GL_LIGHT1, GL_DIFFUSE,   (1.0, 0.8, 0.6, 1.0)) # Mocniejsza pochodnia
+    glLightf(GL_LIGHT1, GL_CONSTANT_ATTENUATION, 0.8)
+    glLightf(GL_LIGHT1, GL_LINEAR_ATTENUATION, 0.05) # Mniejsze tłumienie (dalej świeci)
+    glLightf(GL_LIGHT1, GL_QUADRATIC_ATTENUATION, 0.005)
     
     glEnable(GL_COLOR_MATERIAL)
     glColorMaterial(GL_FRONT, GL_AMBIENT_AND_DIFFUSE)
