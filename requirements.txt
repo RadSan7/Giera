@@ -1,2 +1,2 @@
 # Tutaj wpisujemy biblioteki, np.:
-pygame
+ursina
