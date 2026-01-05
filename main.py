@@ -1,23 +1,23 @@
 from panda3d.core import loadPrcFileData
 
-# --- KONFIGURACJA DLA MACOS (M1/M2/Intel) ---
-# Wymagane, aby Ursina używała nowoczesnego OpenGL zamiast starego (default na Macu to 2.1)
-loadPrcFileData('', 'gl-version 3 2')
+# --- KONFIGURACJA DLA MACOS ---
+# Próbujemy nowszego OpenGL 4.1 (M1/M2 to obsługują)
+loadPrcFileData('', 'gl-version 4 1')
 loadPrcFileData('', 'gl-profile core')
-# Wyłączamy wsparcie dla przestarzałych funkcji (fixed-function pipeline)
-loadPrcFileData('', 'framebuffer-multisample 0')
-loadPrcFileData('', 'multisamples 0')
+# Ukrywamy błędy "missing version", bo Core Profile jest czasem nadgorliwy
+loadPrcFileData('', 'gl-ignore-no-source #t')
 
 from ursina import *
+from ursina.shaders import unlit_shader # Importujemy prosty shader
 from ursina.prefabs.first_person_controller import FirstPersonController
 
 # Inicjalizacja silnika
 app = Ursina()
 
-# --- TRYB BEZPIECZNY SHADERÓW ---
-# Wyłączamy domyślne shadery Ursiny, które mogą kłócić się z Core Profile na Macu
-# Dzięki temu grafika będzie "płaska" (unlit), ale zadziała bez błędów kompilacji.
-Entity.default_shader = None
+# --- FIX SHADERÓW ---
+# Zamiast 'None' (co powoduje automagiczne generowanie wadliwych shaderów),
+# używamy oficjalnego 'unlit_shader', który jest bardzo prosty.
+Entity.default_shader = unlit_shader
 
 # Ustawienia okna
 window.title = 'Antigravity 3D Game'
