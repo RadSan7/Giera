@@ -1,3 +1,7 @@
+from panda3d.core import loadPrcFileData
+# Konfiguracja dla macOS - wymuszenie OpenGL 3.2 Core Profile
+loadPrcFileData('', 'gl-version 3 2')
+
 from ursina import *
 from ursina.prefabs.first_person_controller import FirstPersonController
 
