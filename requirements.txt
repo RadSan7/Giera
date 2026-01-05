@@ -1,4 +1,2 @@
 # Tutaj wpisujemy biblioteki, np.:
-# numpy
-# pandas
-# torch
+pygame
