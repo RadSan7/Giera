@@ -16,7 +16,7 @@ window.fps_counter.enabled = True
 # Podłoga
 ground = Entity(
     model='plane',
-    texture='grass',
+    color=color.green,
     collider='box',
     scale=(100, 1, 100),
     position=(0, 0, 0)
