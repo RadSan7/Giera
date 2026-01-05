@@ -1,44 +1,44 @@
 from panda3d.core import loadPrcFileData
 
 # --- KONFIGURACJA DLA MACOS ---
-# Musimy używać Core Profile (GL 3.2+), aby mieć dostęp do nowszych funkcji,
-# ALE musimy też dostarczyć shadery w wersji 150, bo domyślne 130 są odrzucane.
-loadPrcFileData('', 'gl-version 3 2')
-loadPrcFileData('', 'gl-profile core')
-loadPrcFileData('', 'gl-ignore-no-source #t')
+# macOS obsługuje max OpenGL 4.1, więc wymuszamy tę wersję
+loadPrcFileData('', 'gl-version 4 1')
 
 from ursina import *
 from ursina.prefabs.first_person_controller import FirstPersonController
+import ursina.shader as shader_module
+
+# --- NADPISUJEMY DOMYŚLNE SHADERY URSINY ---
+# Ursina używa GLSL 430, ale macOS obsługuje max GLSL 410.
+# Dlatego musimy nadpisać te wartości PRZED utworzeniem jakichkolwiek obiektów.
+shader_module.default_vertex_shader = '''
+#version 410
+uniform mat4 p3d_ModelViewProjectionMatrix;
+in vec4 p3d_Vertex;
+in vec2 p3d_MultiTexCoord0;
+out vec2 uv;
+void main() {
+    gl_Position = p3d_ModelViewProjectionMatrix * p3d_Vertex;
+    uv = p3d_MultiTexCoord0;
+}
+'''
+
+shader_module.default_fragment_shader = '''
+#version 410
+uniform sampler2D tex;
+uniform vec4 p3d_ColorScale;
+in vec2 uv;
+out vec4 color;
+void main() {
+    color = p3d_ColorScale;
+}
+'''
 
 # Inicjalizacja silnika
 app = Ursina()
 
-# --- CUSTOM MACOS SHADER ---
-# Ręcznie napisany shader w wersji 150 (kompatybilny z macOS Core Profile).
-# Zastępuje on domyślne shadery, które powodują błąd "version 130 not supported".
-macos_shader = Shader(language=Shader.GLSL, vertex='''
-#version 150
-uniform mat4 p3d_ModelViewProjectionMatrix;
-in vec4 p3d_Vertex;
-in vec2 p3d_MultiTexCoord0;
-out vec2 texcoord;
-void main() {
-  gl_Position = p3d_ModelViewProjectionMatrix * p3d_Vertex;
-  texcoord = p3d_MultiTexCoord0;
-}
-''', fragment='''
-#version 150
-uniform vec4 p3d_ColorScale;
-in vec2 texcoord;
-out vec4 p3d_FragColor;
-void main() {
-  // Prosty kolor bez tekstur (unlit)
-  p3d_FragColor = p3d_ColorScale;
-}
-''')
-
-# Ustawiamy ten shader jako domyślny dla wszystkich obiektów
-Entity.default_shader = macos_shader
+# Wyłączamy domyślne shadery na Entity, żeby używało fixed-function lub naszych nadpisanych
+Entity.default_shader = None
 
 # Ustawienia okna
 window.title = 'Antigravity 3D Game'
@@ -54,7 +54,6 @@ ground = Entity(
     collider='box',
     scale=(100, 1, 100),
     position=(0, 0, 0),
-    shader=None 
 )
 
 # Niebo
@@ -63,74 +62,63 @@ sky = Entity(
     scale=500, 
     color=color.cyan, 
     double_sided=True, 
-    shader=None
 )
 
 # Lewitujące kostki
+cubes = []
 for i in range(8):
-    Entity(
+    cube = Entity(
         model='cube',
         color=color.hsv(30 * i, 1, 0.8),
         position=(random.randint(-10, 10), random.randint(2, 6), random.randint(-10, 10)),
         scale=(1, 1, 1),
         rotation=(random.randint(0,360), random.randint(0,360), 0),
         collider='box',
-        shader=None
     )
+    cubes.append(cube)
 
 # --- GRACZ ---
 player = FirstPersonController()
-player.cursor.visible = False # Ukrywamy kursor systemowy, bo mamy celownik
+player.cursor.visible = False
 player.gravity = 1
 
 # Celownik
 crosshair = Entity(parent=camera.ui, model='quad', color=color.red, scale=.015, rotation_z=45)
 
-# Broń (pudełko udające broń)
-gun = Entity(parent=camera, position=(.5, -.25, .5), scale=(.3, .2, 1), model='cube', color=color.gray, on_cooldown=False, shader=macos_shader)
+# Broń
+gun = Entity(parent=camera, position=(.5, -.25, .5), scale=(.3, .2, 1), model='cube', color=color.gray)
 
-# Zmienne do trzymania obiektu
+# Zmienna do trzymania obiektu
 held_entity = None
 
 # --- LOGIKA ---
 def update():
     global held_entity
 
-    # Wyjście
     if held_keys['escape']:
         application.quit()
         
-    # Mechanika chodzenia/latania (Grawitacja)
     if held_keys['g']:
         player.gravity = 0.1
     else:
         player.gravity = 1
 
-    # --- MECHANIKA BRONI ANTYGRAWITACYJNEJ ---
-    
-    # 1. Trzymanie obiektu
+    # Trzymanie obiektu
     if held_entity:
-        # Obiekt podąża za punktem przed kamerą
-        # Lerp (płynne przejście) dla ładniejszego efektu
         target_position = camera.world_position + camera.forward * 3
         held_entity.position = lerp(held_entity.position, target_position, time.dt * 10)
-        # Resetujemy rotację, żeby było "magicznie" stabilnie (opcjonalne)
         held_entity.rotation = lerp(held_entity.rotation, camera.rotation, time.dt * 5)
 
-    # 2. Strzelanie / Podnoszenie (Myszka)
+    # Chwytanie / Upuszczanie
     if held_keys['left mouse']:
         if held_entity:
-            # Rzut (puszczamy obiekt + wektor siły by zadziałał, gdybyśmy mieli fizykę RigidBody)
-            # W prostym Ursina domyślnie kolizje są statyczne, ale możemy symulować "rzut"
             held_entity = None
         else:
-            # Próba podniesienia
             hit_info = raycast(camera.world_position, camera.forward, distance=10)
             if hit_info.hit:
-                if hit_info.entity != ground: # Nie chcemy podnieść podłogi!
+                if hit_info.entity != ground:
                     held_entity = hit_info.entity
 
-    # Reset trzymania prawym przyciskiem (upuszczenie)
     if held_keys['right mouse'] and held_entity:
         held_entity = None
 
