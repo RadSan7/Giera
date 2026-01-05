@@ -25,7 +25,7 @@ COLOR_TORCH = (1.0, 0.6, 0.2) # Ogień
 COLOR_CRYSTAL = (0.2, 0.8, 1.0) # Magiczny błękit
 
 # --- STAN GRY ---
-camera_pos = [0.0, 2.0, 0.0] # Bezpieczny środek (z dala od kolumn)
+camera_pos = [0.0, 5.0, 0.0] # Spawn wysoko (5m), żeby spaść na ziemię
 camera_rot = [0.0, 0.0]
 velocity_y = 0.0
 on_ground = False
@@ -116,12 +116,12 @@ def init_graphics():
     glEnable(GL_CULL_FACE)
     glShadeModel(GL_SMOOTH) # Gładkie cieniowanie (Gouraud)
     
-    # Mroczna mgła (poprawiona - mniej agresywna)
+    # Mroczna mgła (poprawiona - startuje dalej)
     glEnable(GL_FOG)
     glFogfv(GL_FOG_COLOR, COLOR_SKY + (1.0,))
-    glFogi(GL_FOG_MODE, GL_LINEAR) # Liniowa zamiast EXP2 (łatwiej kontrolować)
-    glFogf(GL_FOG_START, 5.0)  # Zaczyna się 5 metrów od gracza
-    glFogf(GL_FOG_END, 35.0)   # Kończy na 35 metrach
+    glFogi(GL_FOG_MODE, GL_LINEAR)
+    glFogf(GL_FOG_START, 10.0)  # Jeszcze dalej (10m)
+    glFogf(GL_FOG_END, 40.0)
     
     # Oświetlenie
     glEnable(GL_LIGHTING)
@@ -378,8 +378,8 @@ def main():
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         glLoadIdentity()
         
-        # Zwiększyłem near plane do 0.2, żeby nie ucinało za blisko
-        gluPerspective(FOV, (SCREEN_WIDTH/SCREEN_HEIGHT), 0.2, 100.0) 
+        # Zwiększyłem near plane do 0.5 (bezpieczniej dla glębi)
+        gluPerspective(FOV, (SCREEN_WIDTH/SCREEN_HEIGHT), 0.5, 100.0) 
         
         glMatrixMode(GL_MODELVIEW)
         glLoadIdentity()
