@@ -13,8 +13,8 @@ SPEED = 0.15
 MOUSE_SENS = 0.15
 
 # === KOLORY ===
-C_SKY = (0.1, 0.1, 0.12)
-C_AMBIENT = (0.5, 0.5, 0.5)
+C_SKY = (0.05, 0.05, 0.08) # Ciemniejsze niebo
+C_AMBIENT = (0.3, 0.3, 0.35)
 
 # === STAN GRY ===
 STATE_MENU = 0
@@ -24,20 +24,24 @@ game_state = STATE_MENU
 pos = [0.0, 5.0, 0.0]
 rot = [0.0, 0.0]
 vel_y = 0.0
+cam_y_smooth = 5.0 # Do interpolacji kamery
 fullscreen = False
+has_sword = False
 
 objects = [] 
 texture_ids = {}
 display_lists = {}
 
-# === OBJ LOADER (Z poprzedniego kroku, uproszczony) ===
+def lerp(a, b, t): return a + (b - a) * t
+
+# === OBJ LOADER ===
 def load_obj(filename, tex_key):
     vertices = []
     texcoords = []
     normals = []
     faces = []
+    if not os.path.exists(filename): return None
     try:
-        if not os.path.exists(filename): return None
         for line in open(filename, "r"):
             if line.startswith('#'): continue
             values = line.split()
@@ -56,9 +60,8 @@ def load_obj(filename, tex_key):
         glNewList(list_id, GL_COMPILE)
         if tex_key and tex_key in texture_ids:
             glEnable(GL_TEXTURE_2D); glBindTexture(GL_TEXTURE_2D, texture_ids[tex_key])
-            # TRANSPARENCY
             glEnable(GL_ALPHA_TEST); glAlphaFunc(GL_GREATER, 0.5) 
-        
+         
         glBegin(GL_TRIANGLES); glColor3f(1,1,1)
         for face in faces:
             for i in range(1, len(face)-1):
@@ -86,37 +89,23 @@ def load_texture(name, filename):
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, data)
         glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
         glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
-        
-        # ANISOTROPY (Max Quality)
-        try:
-            max_aniso = glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT)
-            glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, max_aniso)
-        except: pass
-        
         glGenerateMipmap(GL_TEXTURE_2D)
         texture_ids[name] = tid
         print(f"Loaded {name}")
     except Exception as e: print(f"Err {name}: {e}")
 
 # === TERRAIN SYSTEM ===
-TERRAIN_SIZE = 100
-TERRAIN_RES = 1
+TERRAIN_SIZE = 40 # Limit mapy
 terrain_heights = {}
 
 def get_height(x, z):
-    # Prosty noise oparty na sinusach
-    x, z = int(x), int(z)
-    if (x,z) in terrain_heights: return terrain_heights[(x,z)]
-    
-    # Generowanie wysokości
-    val = math.sin(x * 0.1) * 1.5 + math.cos(z * 0.1) * 1.5
-    val += math.sin(x * 0.3 + z * 0.2) * 0.5
-    
-    # "Dolina" na środku spawn
+    x_i, z_i = int(x), int(z)
+    if (x_i,z_i) in terrain_heights: return terrain_heights[(x_i,z_i)]
+    val = math.sin(x_i * 0.1) * 1.5 + math.cos(z_i * 0.1) * 1.5
+    val += math.sin(x_i*0.3 + z_i*0.2) * 0.5
     dist = math.sqrt(x*x + z*z)
-    if dist < 10: val *= (dist/10.0) # Flat at center
-    
-    terrain_heights[(x,z)] = val
+    if dist < 8: val *= (dist/8.0)
+    terrain_heights[(x_i,z_i)] = val
     return val
 
 def create_terrain_list():
@@ -124,32 +113,53 @@ def create_terrain_list():
     glNewList(lid, GL_COMPILE)
     glEnable(GL_TEXTURE_2D)
     glBindTexture(GL_TEXTURE_2D, texture_ids.get('grass', 0))
-    glColor3f(0.8, 0.8, 0.8) # Trochę ciemniejsza trawa
+    glColor3f(0.7, 0.7, 0.7)
     
-    glBegin(GL_QUADS)
-    glNormal3f(0, 1, 0)
-    
-    rng = 40 # Zasięg rysowania (-40 do 40)
-    steps = 1
-    
-    for x in range(-rng, rng, steps):
-        for z in range(-rng, rng, steps):
-            x1, z1 = x, z
-            x2, z2 = x+steps, z+steps
+    glBegin(GL_QUADS); glNormal3f(0, 1, 0)
+    rng = TERRAIN_SIZE
+    for x in range(-rng, rng, 1):
+        for z in range(-rng, rng, 1):
+            y1 = get_height(x, z)
+            y2 = get_height(x+1, z)
+            y3 = get_height(x+1, z+1)
+            y4 = get_height(x, z+1)
             
-            y1 = get_height(x1, z1)
-            y2 = get_height(x2, z1)
-            y3 = get_height(x2, z2)
-            y4 = get_height(x1, z2)
-            
-            # UV mapping (niepowtarzalny wzór + detal)
             sc = 0.2
-            glTexCoord2f(x1*sc, z1*sc); glVertex3f(x1, y1, z1)
-            glTexCoord2f(x2*sc, z1*sc); glVertex3f(x2, y2, z1)
-            glTexCoord2f(x2*sc, z2*sc); glVertex3f(x2, y3, z2)
-            glTexCoord2f(x1*sc, z2*sc); glVertex3f(x1, y4, z2)
-            
+            glTexCoord2f(x*sc, z*sc); glVertex3f(x, y1, z)
+            glTexCoord2f((x+1)*sc, z*sc); glVertex3f(x+1, y2, z)
+            glTexCoord2f((x+1)*sc, (z+1)*sc); glVertex3f(x+1, y3, z+1)
+            glTexCoord2f(x*sc, (z+1)*sc); glVertex3f(x, y4, z+1)
     glEnd()
+    
+    # ROCK WALLS
+    glBindTexture(GL_TEXTURE_2D, texture_ids.get('rock_wall', 0))
+    glBegin(GL_QUADS)
+    h_wall = 15
+    # 4 Sciany
+    for i in range(-rng, rng, 4):
+        # North
+        glTexCoord2f(0,0); glVertex3f(i, -5, -rng)
+        glTexCoord2f(1,0); glVertex3f(i+4, -5, -rng)
+        glTexCoord2f(1,1); glVertex3f(i+4, h_wall, -rng)
+        glTexCoord2f(0,1); glVertex3f(i, h_wall, -rng)
+        # South
+        glTexCoord2f(0,0); glVertex3f(i, -5, rng)
+        glTexCoord2f(1,0); glVertex3f(i+4, -5, rng)
+        glTexCoord2f(1,1); glVertex3f(i+4, h_wall, rng)
+        glTexCoord2f(0,1); glVertex3f(i, h_wall, rng)
+        # West
+        glTexCoord2f(0,0); glVertex3f(-rng, -5, i)
+        glTexCoord2f(1,0); glVertex3f(-rng, -5, i+4)
+        glTexCoord2f(1,1); glVertex3f(-rng, h_wall, i+4)
+        glTexCoord2f(0,1); glVertex3f(-rng, h_wall, i)
+        # East
+        glTexCoord2f(0,0); glVertex3f(rng, -5, i)
+        glTexCoord2f(1,0); glVertex3f(rng, -5, i+4)
+        glTexCoord2f(1,1); glVertex3f(rng, h_wall, i+4)
+        glTexCoord2f(0,1); glVertex3f(rng, h_wall, i)
+        
+    glEnd()
+    
     glDisable(GL_TEXTURE_2D)
     glEndList()
     return lid
@@ -171,12 +181,9 @@ class Wolf:
         rad = math.radians(self.rot)
         self.x += math.sin(rad) * self.speed
         self.z += math.cos(rad) * self.speed
-        
-        # Terrain follow
         target_y = get_height(self.x, self.z)
-        self.y = target_y # Snap to ground
-        
-        if abs(self.x) > 40 or abs(self.z) > 40: self.rot += 180
+        self.y = target_y 
+        if abs(self.x) > TERRAIN_SIZE-2 or abs(self.z) > TERRAIN_SIZE-2: self.rot += 180
         self.anim_timer += 0.2
 
     def draw(self):
@@ -184,6 +191,7 @@ class Wolf:
         glTranslatef(self.x, self.y, self.z)
         glRotatef(self.rot, 0, 1, 0)
         
+        glEnable(GL_TEXTURE_2D)
         glBindTexture(GL_TEXTURE_2D, texture_ids.get('fur', 0))
         glColor3f(1,1,1)
         
@@ -207,34 +215,83 @@ class Wolf:
                 glScalef(0.15, 0.6, 0.15)
                 gluSphere(quad, 1, 8, 8)
                 glPopMatrix()
+        glDisable(GL_TEXTURE_2D)
         glPopMatrix()
 
-class Billboard:
-    def __init__(self, tex, x, z, scale):
-        self.tex = tex
+class Mushroom3D:
+    def __init__(self, x, z):
         self.x, self.z = x, z
         self.y = get_height(x, z)
-        self.scale = scale
+        self.scale = random.uniform(0.5, 1.0)
         
-    def draw(self, cam_rot_y):
+    def draw(self):
         glPushMatrix()
-        glTranslatef(self.x, self.y + self.scale, self.z) # Center pivot
-        glRotatef(-cam_rot_y, 0, 1, 0) # Face camera
+        glTranslatef(self.x, self.y, self.z)
         glScalef(self.scale, self.scale, self.scale)
-        
-        glBindTexture(GL_TEXTURE_2D, texture_ids.get(self.tex, 0))
-        glEnable(GL_ALPHA_TEST); glAlphaFunc(GL_GREATER, 0.5)
         glColor3f(1,1,1)
         
-        glBegin(GL_QUADS)
-        glNormal3f(0, 0, 1)
-        glTexCoord2f(0, 0); glVertex3f(-1, -1, 0)
-        glTexCoord2f(1, 0); glVertex3f(1, -1, 0)
-        glTexCoord2f(1, 1); glVertex3f(1, 1, 0)
-        glTexCoord2f(0, 1); glVertex3f(-1, 1, 0)
-        glEnd()
-        glDisable(GL_ALPHA_TEST)
+        # Stem
+        glEnable(GL_TEXTURE_2D)
+        glBindTexture(GL_TEXTURE_2D, texture_ids.get('mushroom_stem', 0))
+        quad = gluNewQuadric(); gluQuadricTexture(quad, GL_TRUE)
+        glPushMatrix()
+        glRotatef(-90, 1, 0, 0)
+        gluCylinder(quad, 0.15, 0.1, 0.8, 8, 1)
         glPopMatrix()
+        
+        # Cap
+        glBindTexture(GL_TEXTURE_2D, texture_ids.get('mushroom_cap', 0))
+        glPushMatrix()
+        glTranslatef(0, 0.8, 0)
+        glScalef(1.0, 0.5, 1.0)
+        glRotatef(-90, 1, 0, 0)
+        gluSphere(quad, 0.6, 12, 12)
+        glPopMatrix()
+        
+        glDisable(GL_TEXTURE_2D)
+        glPopMatrix()
+
+class Sword:
+    def draw_in_hand(self):
+        # Rysowanie miecza w "rece" (przy kamerze)
+        glDisable(GL_DEPTH_TEST) # Zeby nie przenikal przez sciany
+        glMatrixMode(GL_PROJECTION); glPushMatrix(); glLoadIdentity()
+        gluPerspective(60, WIDTH/HEIGHT, 0.1, 100)
+        glMatrixMode(GL_MODELVIEW); glPushMatrix(); glLoadIdentity()
+        
+        glTranslatef(0.3, -0.4, -0.8) # Pozycja w "rece"
+        glRotatef(-10, 1, 0, 0)
+        
+        glEnable(GL_TEXTURE_2D)
+        glBindTexture(GL_TEXTURE_2D, texture_ids.get('sword_metal', 0))
+        glColor3f(1,1,1)
+        
+        quad = gluNewQuadric(); gluQuadricTexture(quad, GL_TRUE)
+        
+        # Blade
+        glPushMatrix()
+        glScalef(0.08, 0.8, 0.02)
+        gluSphere(quad, 1, 8, 8) # Uzywam sfery jako bazy bo latwiej
+        glPopMatrix()
+        
+        # Guard
+        glPushMatrix()
+        glTranslatef(0, -0.6, 0)
+        glScalef(0.3, 0.05, 0.05)
+        gluSphere(quad, 1, 8, 8)
+        glPopMatrix()
+        
+        # Handle
+        glPushMatrix()
+        glTranslatef(0, -0.8, 0)
+        glScalef(0.05, 0.2, 0.05)
+        gluSphere(quad, 1, 8, 8)
+        glPopMatrix()
+
+        glDisable(GL_TEXTURE_2D)
+        
+        glPopMatrix(); glMatrixMode(GL_PROJECTION); glPopMatrix(); glMatrixMode(GL_MODELVIEW)
+        glEnable(GL_DEPTH_TEST)
 
 class Chest:
     def __init__(self, x, z):
@@ -242,9 +299,16 @@ class Chest:
         self.y = get_height(x, z)
         self.is_open = False
         self.lid_angle = 0
+        self.has_item = True
         
     def interact(self):
-        self.is_open = not self.is_open
+        if not self.is_open:
+            self.is_open = True
+            return False
+        elif self.is_open and self.has_item:
+            self.has_item = False
+            return True # Given sword
+        return False
     
     def update(self):
         target = -110 if self.is_open else 0
@@ -253,6 +317,7 @@ class Chest:
     def draw(self):
         glPushMatrix()
         glTranslatef(self.x, self.y, self.z)
+        glEnable(GL_TEXTURE_2D)
         glBindTexture(GL_TEXTURE_2D, texture_ids.get('chest', 0))
         glColor3f(1,1,1)
         
@@ -262,50 +327,47 @@ class Chest:
         glTranslatef(0, box_h/2, 0)
         glScalef(box_w, box_h, box_d)
         
-        # Simple box mapping
-        for i in range(4): # Sides
+        for i in range(4): 
             glPushMatrix(); glRotatef(90*i, 0, 1, 0); glTranslatef(0, 0, 0.5)
             glBegin(GL_QUADS); glNormal3f(0,0,1)
-            glTexCoord2f(0,0); glVertex3f(-0.5,-0.5,0)
-            glTexCoord2f(1,0); glVertex3f(0.5,-0.5,0)
-            glTexCoord2f(1,1); glVertex3f(0.5,0.5,0)
-            glTexCoord2f(0,1); glVertex3f(-0.5,0.5,0)
+            glTexCoord2f(0,0); glVertex3f(-0.5,-0.5,0); glTexCoord2f(1,0); glVertex3f(0.5,-0.5,0)
+            glTexCoord2f(1,1); glVertex3f(0.5,0.5,0); glTexCoord2f(0,1); glVertex3f(-0.5,0.5,0)
             glEnd(); glPopMatrix()
         glPopMatrix()
         
-        # Lid
         glPushMatrix()
-        glTranslatef(0, box_h, -box_d/2) # Hinge
+        glTranslatef(0, box_h, -box_d/2)
         glRotatef(self.lid_angle, 1, 0, 0)
         glTranslatef(0, 0, box_d/2)
-        
         glScalef(box_w, 0.2, box_d)
-        glBegin(GL_QUADS); glNormal3f(0,1,0)
-        # Top
-        glTexCoord2f(0,0); glVertex3f(-0.5,0.5,0.5)
-        glTexCoord2f(1,0); glVertex3f(0.5,0.5,0.5)
-        glTexCoord2f(1,1); glVertex3f(0.5,0.5,-0.5)
-        glTexCoord2f(0,1); glVertex3f(-0.5,0.5,-0.5)
+        glBegin(GL_QUADS)
+        glTexCoord2f(0,0); glVertex3f(-0.5,0.5,0.5); glTexCoord2f(1,0); glVertex3f(0.5,0.5,0.5)
+        glTexCoord2f(1,1); glVertex3f(0.5,0.5,-0.5); glTexCoord2f(0,1); glVertex3f(-0.5,0.5,-0.5)
         glEnd()
         glPopMatrix()
         
+        glDisable(GL_TEXTURE_2D)
         glPopMatrix()
 
 # === SYSTEM ===
 
 wolves = []
-plants = []
+mushrooms = []
 chests = []
 trees = []
+sword_item = Sword()
 
 def init_game():
     global terrain_list
     load_texture('grass', 'grass.png')
     load_texture('stone', 'stone.png')
     load_texture('fur', 'fur.png')
-    load_texture('mushroom', 'mushroom.png')
-    load_texture('grass_tuft', 'grass_tuft.png')
+    # New Assets
+    load_texture('mushroom_cap', 'mushroom_cap.png')
+    load_texture('mushroom_stem', 'mushroom_stem.png')
     load_texture('chest', 'chest.png')
+    load_texture('rock_wall', 'rock_wall.png')
+    load_texture('sword_metal', 'sword_metal.png')
     
     # Trees
     load_texture('tree_bark', '4m7qrzwizbnk-fir/bark.jpg')
@@ -314,25 +376,17 @@ def init_game():
     
     terrain_list = create_terrain_list()
     
-    # Spawn
     for _ in range(5): wolves.append(Wolf(random.uniform(-30, 30), random.uniform(-30, 30)))
-    for _ in range(50): plants.append(Billboard('grass_tuft', random.uniform(-38, 38), random.uniform(-38, 38), 0.5))
-    for _ in range(20): plants.append(Billboard('mushroom', random.uniform(-38, 38), random.uniform(-38, 38), 0.4))
+    for _ in range(30): mushrooms.append(Mushroom3D(random.uniform(-35, 35), random.uniform(-35, 35)))
+    chests.append(Chest(0, -8)) # Before spawn
     
-    # Chest
-    chests.append(Chest(0, -5)) # Przed spawnem (zakładając spawn 0,0)
-    
-    # Trees
-    for _ in range(30):
+    for _ in range(40):
         tx, tz = random.uniform(-35, 35), random.uniform(-35, 35)
         ty = get_height(tx, tz)
         trees.append((tx, ty, tz, random.uniform(1.0, 1.5)))
 
-def draw_scene(cam_rot_y):
-    # Terrain
+def draw_scene():
     if terrain_list: glCallList(terrain_list)
-    
-    # Trees
     if 'tree' in display_lists:
         for t in trees:
             glPushMatrix()
@@ -340,10 +394,8 @@ def draw_scene(cam_rot_y):
             glScalef(t[3], t[3], t[3])
             glCallList(display_lists['tree'])
             glPopMatrix()
-    
-    # Objects
     for w in wolves: w.draw()
-    for p in plants: p.draw(cam_rot_y)
+    for m in mushrooms: m.draw()
     for c in chests: c.draw()
 
 def set_projection(w, h):
@@ -356,60 +408,52 @@ def set_projection(w, h):
     glLoadIdentity()
 
 def main():
-    global game_state, pos, rot, vel_y, fullscreen, WIDTH, HEIGHT
+    global game_state, pos, rot, vel_y, fullscreen, WIDTH, HEIGHT, has_sword, cam_y_smooth
     pygame.init()
     screen = pygame.display.set_mode((WIDTH, HEIGHT), DOUBLEBUF | OPENGL | RESIZABLE)
-    pygame.display.set_caption("Antigravity: High-End")
+    pygame.display.set_caption("Antigravity: Dark Fantasy RPG")
+    pygame.mouse.set_visible(False) # Default hidden
     
-    # FIX BLACK SCREEN ON START
     set_projection(WIDTH, HEIGHT)
     
     glEnable(GL_DEPTH_TEST)
     glEnable(GL_LIGHTING); glEnable(GL_LIGHT0); glEnable(GL_LIGHT1)
-    glLightfv(GL_LIGHT0, GL_POSITION, (20, 100, 20, 0))
+    glLightfv(GL_LIGHT0, GL_POSITION, (20, 50, 20, 0))
     glLightfv(GL_LIGHT0, GL_AMBIENT, (*C_AMBIENT, 1))
     glEnable(GL_COLOR_MATERIAL)
-    
-    # Fog (Distance hide)
     glEnable(GL_FOG)
     glFogfv(GL_FOG_COLOR, C_SKY + (1.0,))
-    glFogi(GL_FOG_MODE, GL_LINEAR)
-    glFogf(GL_FOG_START, 20.0); glFogf(GL_FOG_END, 60.0) # Masking terrain edge
+    glFogi(GL_FOG_MODE, GL_EXP2); glFogf(GL_FOG_DENSITY, 0.02)
     
+    # Init Game
     init_game()
     clock = pygame.time.Clock()
     
     while True:
         clock.tick(60)
-        
         for e in pygame.event.get():
             if e.type == QUIT: return
             if e.type == VIDEORESIZE and not fullscreen:
                  WIDTH, HEIGHT = e.w, e.h
                  screen = pygame.display.set_mode((WIDTH, HEIGHT), DOUBLEBUF | OPENGL | RESIZABLE)
                  set_projection(WIDTH, HEIGHT)
-                 
+            
             if e.type == MOUSEBUTTONDOWN and game_state == STATE_GAME:
-                # Interaction
-                if e.button == 1: # Left click
-                     # Check chests
+                if e.button == 1:
+                     # Check Chest
                      for c in chests:
                          dist = math.sqrt((pos[0]-c.x)**2 + (pos[2]-c.z)**2)
-                         if dist < 4.0: c.interact()
-                         
+                         if dist < 5.0: 
+                             got_item = c.interact()
+                             if got_item: has_sword = True
+                             
             if e.type == KEYDOWN:
                 if e.key == K_ESCAPE:
                     game_state = STATE_MENU if game_state == STATE_GAME else STATE_MENU
                     pygame.mouse.set_visible(game_state == STATE_MENU)
-                    # FIX MENU STATE
-                    if game_state == STATE_MENU:
-                        glDisable(GL_LIGHTING); glDisable(GL_FOG)
-                    else:
-                        glEnable(GL_LIGHTING); glEnable(GL_FOG)
                         
                 if e.key == K_RETURN and game_state == STATE_MENU:
                     game_state = STATE_GAME; pygame.mouse.set_visible(False)
-                    glEnable(GL_LIGHTING); glEnable(GL_FOG)
                     
                 if e.key == K_f:
                     fullscreen = not fullscreen
@@ -441,16 +485,24 @@ def main():
             if keys[K_a]: pos[0]-=c*SPEED; pos[2]-=s*SPEED
             if keys[K_d]: pos[0]+=c*SPEED; pos[2]+=s*SPEED
             
-            # Physics (Terrain collision)
-            ground_y = get_height(pos[0], pos[2]) + 2.0
+            # Bound check with Walls
+            if pos[0] > TERRAIN_SIZE-2: pos[0] = TERRAIN_SIZE-2
+            if pos[0] < -(TERRAIN_SIZE-2): pos[0] = -(TERRAIN_SIZE-2)
+            if pos[2] > TERRAIN_SIZE-2: pos[2] = TERRAIN_SIZE-2
+            if pos[2] < -(TERRAIN_SIZE-2): pos[2] = -(TERRAIN_SIZE-2)
             
-            if keys[K_SPACE] and pos[1] <= ground_y + 0.2: vel_y = 0.2
-            if keys[K_g]: vel_y += 0.01; vel_y *= 0.9
-            else: vel_y -= 0.01
+            # Physics & Camera Smooth
+            target_ground = get_height(pos[0], pos[2]) + 2.0
+            if keys[K_SPACE] and pos[1] <= target_ground + 0.5: vel_y = 0.2
+            if keys[K_g]: vel_y += 0.01; vel_y *= 0.9 # Fly
+            else: vel_y -= 0.01 # Gravity
             
             pos[1] += vel_y
-            if pos[1] < ground_y: pos[1] = ground_y; vel_y = 0
+            if pos[1] < target_ground: pos[1] = target_ground; vel_y = 0
             
+            # Smooth Camera Y
+            cam_y_smooth = lerp(cam_y_smooth, pos[1], 0.1)
+
             for w in wolves: w.update()
             for c in chests: c.update()
 
@@ -460,31 +512,34 @@ def main():
         glLoadIdentity()
         
         if game_state == STATE_MENU:
+            # Safe 2D Drawing
+            glDisable(GL_LIGHTING); glDisable(GL_FOG); glDisable(GL_DEPTH_TEST); glDisable(GL_TEXTURE_2D)
             glMatrixMode(GL_PROJECTION); glPushMatrix(); glLoadIdentity()
             glOrtho(0, WIDTH, 0, HEIGHT, -1, 1)
             glMatrixMode(GL_MODELVIEW); glPushMatrix(); glLoadIdentity()
             
-            # Fancy Menu
-            glBegin(GL_QUADS); glColor3f(0.1, 0.1, 0.12)
-            glVertex2f(0,0); glVertex2f(WIDTH,0); glVertex2f(WIDTH,HEIGHT); glVertex2f(0,HEIGHT)
-            glEnd()
+            glColor3f(0.1, 0.1, 0.12)
+            glRectf(0, 0, WIDTH, HEIGHT)
             
-            glColor3f(1,1,1)
-            glRectf(WIDTH//2-100, HEIGHT//2-20, WIDTH//2+100, HEIGHT//2+20) # Button placeholder
+            glColor3f(0.8, 0.8, 0.8)
+            # Simple UI elements (Boxes)
+            glRectf(WIDTH//2-100, HEIGHT//2-20, WIDTH//2+100, HEIGHT//2+20) 
             
             glMatrixMode(GL_MODELVIEW); glPopMatrix()
             glMatrixMode(GL_PROJECTION); glPopMatrix()
             glMatrixMode(GL_MODELVIEW)
+            glEnable(GL_DEPTH_TEST); glEnable(GL_LIGHTING); glEnable(GL_FOG)
         else:
             pch = math.radians(rot[1])
-            gluLookAt(pos[0], pos[1], pos[2], 
-                      pos[0]+math.sin(rad)*math.cos(pch), pos[1]-math.sin(pch), pos[2]-math.cos(rad)*math.cos(pch),
+            # Use cam_y_smooth for smooth walking
+            gluLookAt(pos[0], cam_y_smooth, pos[2], 
+                      pos[0]+math.sin(rad)*math.cos(pch), cam_y_smooth-math.sin(pch), pos[2]-math.cos(rad)*math.cos(pch),
                       0, 1, 0)
             
-            # Torch Light
-            glLightfv(GL_LIGHT1, GL_POSITION, (*pos, 1))
+            glLightfv(GL_LIGHT1, GL_POSITION, (pos[0], pos[1], pos[2], 1))
             
-            draw_scene(rot[0])
+            draw_scene()
+            if has_sword: sword_item.draw_in_hand()
             
         pygame.display.flip()
 
