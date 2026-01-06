@@ -482,167 +482,203 @@ def draw_rect(x, y, w, h, color):
     glRectf(x, y, x+w, y+h)
 
 def draw_inventory(font):
-    # Dim background
+    # --- DIM BACKGROUND ---
     glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-    draw_rect(0, 0, WIDTH, HEIGHT, (0,0,0,0.7))
+    # Full screen darkness
+    draw_rect(0, 0, WIDTH, HEIGHT, (0, 0, 0, 0.85))
     
-    # Inventory Box
-    cx, cy = WIDTH//2, HEIGHT//2
-    w, h = 600, 400
-    draw_rect(cx-w/2, cy-h/2, w, h, (0.1, 0.1, 0.1, 0.95))
-    draw_ui_text(font, "INVENTORY", cx-100, cy-h/2+20)
-    
-    # Drag State
-    mx, my = pygame.mouse.get_pos()
-    gl_my = HEIGHT - my
-    
+    # --- CONSTANTS & LAYOUT ---
     inv = player.inventory
+    mx, my = pygame.mouse.get_pos(); gl_my = HEIGHT - my
     
-    # Helper to check hover
-    def is_hover(bx, by, bs):
-        return bx < mx < bx+bs and by < gl_my < by+bs
-
-    # --- Draw Items & Logic ---
-    slot_size = 64
-    pad = 10
-    start_x = cx - (5 * (slot_size+pad))/2
-    start_y = cy - 50
+    # Center reference
+    cx, cy = WIDTH//2, HEIGHT//2
+    # Panel Sizes
+    p_w, p_h = 500, 600
     
-    # 1. Main Inventory Slots
-    for i in range(10):
-        sx = start_x + (i % 5) * (slot_size + pad)
-        sy = start_y - (i // 5) * (slot_size + pad)
+    # Colors (Premium Dark Theme)
+    C_PANEL_BG = (0.08, 0.08, 0.1, 0.95)
+    C_BORDER_ACTIVE = (0.5, 0.4, 0.2, 1.0)
+    C_BORDER_INACTIVE = (0.2, 0.2, 0.2, 1.0)
+    C_SLOT_BG = (0.15, 0.15, 0.18, 1.0)
+    C_SLOT_HOVER = (0.25, 0.25, 0.3, 1.0)
+    C_ITEM_BG = (0.3, 0.3, 0.35, 1.0)
+    
+    # --- HELPER: Draw Panel ---
+    def draw_panel(x, y, w, h, title):
+        # Shadow
+        draw_rect(x+5, y-5, w, h, (0,0,0,0.5))
+        # Main BG
+        draw_rect(x, y, w, h, C_PANEL_BG)
+        # Header Line
+        draw_rect(x, y+h-40, w, 2, C_BORDER_ACTIVE)
+        # Title
+        draw_ui_text(font, title, x+20, y+h-30, (255, 200, 100)) # Gold text
+    
+    # --- HELPER: Draw Slot ---
+    def draw_slot(x, y, s, item, is_drag_source=False):
+        hover = x < mx < x+s and y < gl_my < y+s
         
-        col = (0.2, 0.2, 0.2, 1)
-        item = inv.slots[i]
+        # Border
+        b_col = C_BORDER_ACTIVE if hover else C_BORDER_INACTIVE
+        draw_rect(x-2, y-2, s+4, s+4, b_col)
         
-        # Draw Slot
-        if is_hover(sx, sy, slot_size):
-            col = (0.3, 0.3, 0.3, 1)
-            # Drag Start Logic
-            if pygame.mouse.get_pressed()[0] and item and not inv.drag_item:
-                inv.drag_item = item
-                inv.drag_source = ('inv', i)
-                inv.slots[i] = None # Remove temp
-                inv.drag_offset = (mx - sx, gl_my - sy)
+        # BG
+        bg_col = C_SLOT_HOVER if hover else C_SLOT_BG
+        draw_rect(x, y, s, s, bg_col)
         
-        draw_rect(sx, sy, slot_size, slot_size, col)
-        if item and item != inv.drag_item:
-             draw_rect(sx+5, sy+5, slot_size-10, slot_size-10, (0.5, 0.5, 0.5, 1))
-             draw_ui_text(font, item.name[:4], sx+5, sy+20, (0,0,0))
-             
-    # 2. Equipment Slots
-    eq_x = cx - 200; eq_y = cy + 100
+        # Item
+        if item and not is_drag_source:
+            # Item BG
+            draw_rect(x+4, y+4, s-8, s-8, C_ITEM_BG)
+            # Icon / Name
+            # Could render item.icon if we had 2D textures for UI loaded. For now text.
+            col_text = (255,255,255)
+            if item.type == 'weapon': col_text = (255, 100, 100)
+            elif item.type == 'misc': col_text = (100, 255, 100)
+            
+            draw_ui_text(font, item.name[:2], x+15, y+20, col_text)
+            draw_ui_text(font, item.name, x, y-20, (200,200,200)) # Sublabel
+            
+        return hover
+        
+    s_size = 70
+    pad = 15
+    
+    # === LEFT PANEL: PLAYER INVENTORY ===
+    px, py = cx - p_w - 20, cy - p_h//2
+    draw_panel(px, py, p_w, p_h, "INVENTORY")
+    
+    # 1. Equipment (Top of Left Panel)
+    eq_y = py + p_h - 100
+    draw_ui_text(font, "EQUIPMENT", px+20, eq_y+10, (150,150,150))
     
     # Weapon 1
-    draw_ui_text(font, "WEAPON 1 [1]", eq_x, eq_y+70)
-    col1 = (0.4, 0.2, 0.2, 1) if inv.equipped[1] else (0.2, 0.1, 0.1, 1)
-    if is_hover(eq_x, eq_y, slot_size):
-        if pygame.mouse.get_pressed()[0] and inv.equipped[1] and not inv.drag_item:
-             inv.drag_item = inv.equipped[1]
-             inv.drag_source = ('equip', 1)
-             inv.equipped[1] = None
+    w1_x = px + 40
+    if draw_slot(w1_x, eq_y-80, s_size, inv.equipped[1], (inv.drag_item == inv.equipped[1])):
+        if pygame.mouse.get_pressed()[0] and not inv.drag_item and inv.equipped[1]:
+            inv.drag_item = inv.equipped[1]
+            inv.drag_source = ('equip', 1)
+            inv.equipped[1] = None
+    draw_ui_text(font, "MAIN HAND", w1_x, eq_y-100, (100,100,100))
     
-    draw_rect(eq_x, eq_y, slot_size, slot_size, col1)
-    if inv.equipped[1]:
-        draw_rect(eq_x+5, eq_y+5, slot_size-10, slot_size-10, (0.6, 0.3, 0.3, 1))
-        draw_ui_text(font, inv.equipped[1].name[:4], eq_x+5, eq_y+20)
-
     # Weapon 2
-    eq_x2 = cx + 100
-    draw_ui_text(font, "WEAPON 2 [2]", eq_x2, eq_y+70)
-    col2 = (0.4, 0.2, 0.2, 1) if inv.equipped[2] else (0.2, 0.1, 0.1, 1)
-    if is_hover(eq_x2, eq_y, slot_size):
-        if pygame.mouse.get_pressed()[0] and inv.equipped[2] and not inv.drag_item:
-             inv.drag_item = inv.equipped[2]
-             inv.drag_source = ('equip', 2)
-             inv.equipped[2] = None
-
-    draw_rect(eq_x2, eq_y, slot_size, slot_size, col2)
-    if inv.equipped[2]:
-        draw_rect(eq_x2+5, eq_y+5, slot_size-10, slot_size-10, (0.6, 0.3, 0.3, 1))
-        draw_ui_text(font, inv.equipped[2].name[:4], eq_x2+5, eq_y+20)
-
-    # 3. Chest Container (Drag from chest)
-    if inv.opened_container and inv.opened_container.is_open:
-        c_x = cx + w/2 + 20
-        draw_rect(c_x, cy-h/2, 200, h, (0.15, 0.12, 0.1, 0.95))
-        draw_ui_text(font, "CHEST", c_x+70, cy-h/2+20)
-        c_items = inv.opened_container.items
+    w2_x = px + 150
+    if draw_slot(w2_x, eq_y-80, s_size, inv.equipped[2], (inv.drag_item == inv.equipped[2])):
+        if pygame.mouse.get_pressed()[0] and not inv.drag_item and inv.equipped[2]:
+            inv.drag_item = inv.equipped[2]
+            inv.drag_source = ('equip', 2)
+            inv.equipped[2] = None
+    draw_ui_text(font, "OFF HAND", w2_x, eq_y-100, (100,100,100))
+    
+    # 2. Main Backpack (Grid)
+    grid_y = eq_y - 180
+    draw_ui_text(font, "BACKPACK", px+20, grid_y+10, (150,150,150))
+    
+    for i in range(10):
+        col = i % 5
+        row = i // 5
+        sx = px + 40 + col*(s_size+pad)
+        sy = grid_y - 80 - row*(s_size+pad)
         
-        for i, item in enumerate(c_items):
-            iy = cy + 100 - i*70
-            h_col = (0.2, 0.2, 0.2, 1)
-            
-            # Simple Click to loot (Drag from chest logic is complex with list shifting, simplify to click-to-loot or drag start)
-            if c_x+20 < mx < c_x+20+slot_size and iy < gl_my < iy+slot_size:
-                 h_col = (0.4, 0.4, 0.4, 1)
-                 if pygame.mouse.get_pressed()[0] and not inv.drag_item:
-                     # Start dragging from Chest?
-                     # Ideally we remove from chest and put on mouse
+        is_source = (inv.drag_item and inv.drag_source == ('inv', i))
+        if draw_slot(sx, sy, s_size, inv.slots[i], is_source):
+            if pygame.mouse.get_pressed()[0] and not inv.drag_item and inv.slots[i]:
+                inv.drag_item = inv.slots[i]
+                inv.drag_source = ('inv', i)
+                inv.slots[i] = None
+                inv.drag_offset = (mx - sx, gl_my - sy)
+
+    # === RIGHT PANEL: CHEST (If Open) ===
+    if inv.opened_container and inv.opened_container.is_open:
+        cx_p, cy_p = cx + 20, cy - p_h//2
+        draw_panel(cx_p, cy_p, p_w, p_h, "CHEST LOOT")
+        
+        c_items = inv.opened_container.items
+        # Draw as a list or grid? Grid is better for consistency.
+        # But chest has dynamic size list.
+        
+        # Display as grid of 15 slots max for now
+        for i in range(15):
+             col = i % 5
+             row = i // 5
+             sx = cx_p + 40 + col*(s_size+pad)
+             sy = cy_p + p_h - 120 - row*(s_size+pad)
+             
+             item = c_items[i] if i < len(c_items) else None
+             is_source = (inv.drag_item and inv.drag_source == ('chest', i))
+             
+             if draw_slot(sx, sy, s_size, item, is_source):
+                 if pygame.mouse.get_pressed()[0] and not inv.drag_item and item:
                      inv.drag_item = item
                      inv.drag_source = ('chest', i)
-                     c_items.pop(i)
-                     break
-            
-            draw_rect(c_x+20, iy, slot_size, slot_size, h_col)
-            draw_rect(c_x+25, iy+5, slot_size-10, slot_size-10, (0.5,0.5,0.5,1))
-            draw_ui_text(font, item.name[:4], c_x+25, iy+20, (0,0,0))
+                     # Important: Don't pop immediately or shifting indices breaks logic?
+                     # We set slot to None implicitly by redraw, but for chest list we need to handle it.
+                     pass 
 
-    # --- DRAG RENDER & DROP LOGIC ---
+    # === DRAG & DROP LOGIC ===
     if inv.drag_item:
-        # Draw floating item
-        draw_rect(mx - 32, gl_my - 32, 64, 64, (0.7, 0.7, 0.7, 0.8))
-        draw_ui_text(font, inv.drag_item.name[:4], mx-20, gl_my-10, (0,0,0))
+        # Draw Floating Item
+        draw_rect(mx-35, gl_my-35, 70, 70, (0.5, 0.5, 0.6, 0.8))
+        draw_ui_text(font, inv.drag_item.name, mx-30, gl_my-40, (255,255,255))
         
-        # Check Drop (Mouse Up)
+        # DROP HANDLER
         if not pygame.mouse.get_pressed()[0]:
-            # Find Drop Target
             dropped = False
             
-            # 1. Main Slots
+            # 1. Check Backpack Slots
             for i in range(10):
-                sx = start_x + (i % 5) * (slot_size + pad)
-                sy = start_y - (i // 5) * (slot_size + pad)
-                if is_hover(sx, sy, slot_size):
-                    # Swap
-                    existing = inv.slots[i]
+                col = i % 5; row = i // 5
+                sx = px + 40 + col*(s_size+pad)
+                sy = grid_y - 80 - row*(s_size+pad)
+                if sx < mx < sx+s_size and sy < gl_my < sy+s_size:
+                    # SWAP
+                    target = inv.slots[i]
                     inv.slots[i] = inv.drag_item
-                    if existing:
-                        # Return existing to source or swap to cursor? 
-                        # Simple: If source was 'inv', put existing there.
-                        if inv.drag_source[0] == 'inv': inv.slots[inv.drag_source[1]] = existing
-                        elif inv.drag_source[0] == 'equip': inv.equipped[inv.drag_source[1]] = existing
-                        elif inv.drag_source[0] == 'chest': inv.opened_container.items.append(existing)
+                    # Return target to source
+                    if target:
+                        if inv.drag_source[0] == 'inv': inv.slots[inv.drag_source[1]] = target
+                        elif inv.drag_source[0] == 'equip': inv.equipped[inv.drag_source[1]] = target
+                        elif inv.drag_source[0] == 'chest': inv.opened_container.items[inv.drag_source[1]] = target
+                    else:
+                        # If source was chest, we need to remove from chest list now
+                        if inv.drag_source[0] == 'chest':
+                             # We can't easily swap INTO chest list at specific index if it's dynamic
+                             # BUT for simplicity, let's say we just remove from old index
+                             del inv.opened_container.items[inv.drag_source[1]]
+                    
                     dropped = True
                     break
             
-            # 2. Equip Slots
+            # 2. Check Equip Slots
             if not dropped:
-                # Check W1
-                if is_hover(eq_x, eq_y, slot_size) and inv.drag_item.type == 'weapon':
-                    existing = inv.equipped[1]
+                # W1
+                if w1_x < mx < w1_x+s_size and eq_y-80 < gl_my < eq_y-80+s_size and inv.drag_item.type=='weapon':
+                    target = inv.equipped[1]
                     inv.equipped[1] = inv.drag_item
-                    if existing:
-                         if inv.drag_source[0] == 'inv': inv.slots[inv.drag_source[1]] = existing
-                         elif inv.drag_source[0] == 'equip': inv.equipped[inv.drag_source[1]] = existing
-                         elif inv.drag_source[0] == 'chest': inv.opened_container.items.append(existing)
+                    if target:
+                        if inv.drag_source[0] == 'inv': inv.slots[inv.drag_source[1]] = target
+                        elif inv.drag_source[0] == 'chest': inv.opened_container.items[inv.drag_source[1]] = target
+                    elif inv.drag_source[0] == 'chest': del inv.opened_container.items[inv.drag_source[1]]
                     dropped = True
-                # Check W2
-                elif is_hover(eq_x2, eq_y, slot_size) and inv.drag_item.type == 'weapon':
-                    existing = inv.equipped[2]
+                
+                # W2
+                elif w2_x < mx < w2_x+s_size and eq_y-80 < gl_my < eq_y-80+s_size and inv.drag_item.type=='weapon':
+                    target = inv.equipped[2]
                     inv.equipped[2] = inv.drag_item
-                    if existing:
-                        if inv.drag_source[0] == 'inv': inv.slots[inv.drag_source[1]] = existing
-                        elif inv.drag_source[0] == 'equip': inv.equipped[inv.drag_source[1]] = existing
-                        elif inv.drag_source[0] == 'chest': inv.opened_container.items.append(existing)
+                    if target:
+                        if inv.drag_source[0] == 'inv': inv.slots[inv.drag_source[1]] = target
+                        elif inv.drag_source[0] == 'chest': inv.opened_container.items[inv.drag_source[1]] = target
+                    elif inv.drag_source[0] == 'chest': del inv.opened_container.items[inv.drag_source[1]]
                     dropped = True
 
-            # Cancel / Return if not dropped or invalid
+            # 3. Drop back to source (Cancel)
             if not dropped:
                 if inv.drag_source[0] == 'inv': inv.slots[inv.drag_source[1]] = inv.drag_item
                 elif inv.drag_source[0] == 'equip': inv.equipped[inv.drag_source[1]] = inv.drag_item
-                elif inv.drag_source[0] == 'chest': inv.opened_container.items.append(inv.drag_item)
+                elif inv.drag_source[0] == 'chest': 
+                    # Use index if possible, else append
+                    pass # It's already in the list, just wasn't removed.
             
             inv.drag_item = None
     glDisable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
@@ -895,18 +931,20 @@ def main():
                 if e.key == K_e and game_state == STATE_GAME:
                      # Interact
                      closest = None
-                     min_d = 5.0
+                     min_d = 10.0 # Increased range
                      for ent in entities:
                          if isinstance(ent, Chest):
                              d = math.sqrt((player.pos[0]-ent.x)**2 + (player.pos[2]-ent.z)**2)
                              if d < min_d: closest=ent; min_d=d
                      
                      if closest:
+                         print("Opening Chest")
                          closest.is_open = True
                          player.inventory.opened_container = closest
                          game_state = STATE_INVENTORY
+                         paused = False # Ensure not paused
                          pygame.mouse.set_visible(True); pygame.event.set_grab(False)
-                         pygame.event.clear(MOUSEBUTTONDOWN) # Clear any erroneous clicks
+                         pygame.event.clear(MOUSEBUTTONDOWN)
                          pygame.event.clear(MOUSEBUTTONUP)
                          
              if e.type == MOUSEBUTTONDOWN and game_state == STATE_GAME and not paused:
